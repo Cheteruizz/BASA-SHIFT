@@ -31,14 +31,16 @@ const schema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "phone", "role", "employmentType", "weeklyHours", "maxHoursPerDay", "unavailableDays", "availability", "canOpen", "canClose", "canWorkLongShift"],
+        required: ["name", "phone", "role", "employmentType", "weeklyHours", "maxHoursPerDay", "status", "acceptsSplitShift", "unavailableDays", "availability", "canOpen", "canClose", "canWorkLongShift"],
         properties: {
           name: { type: "string" },
           phone: { type: "string" },
-          role: { type: "string", enum: ["sala", "cocina"] },
+          role: { type: "string", enum: ["sala", "cocina", "barra", "terraza", "encargado"] },
           employmentType: { type: "string", enum: ["fullTime", "partTime"] },
           weeklyHours: { type: "integer" },
           maxHoursPerDay: { type: "integer" },
+          status: { type: "string", enum: ["active", "inactive", "temporary"] },
+          acceptsSplitShift: { type: "boolean" },
           unavailableDays: { type: "array", items: { type: "string", enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] } },
           availability: {
             type: "object",

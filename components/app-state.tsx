@@ -51,6 +51,19 @@ interface StoredWorkspace {
   schedule: GeneratedSchedule;
 }
 
+function normalizeEmployee(employee: Employee): Employee {
+  return {
+    ...employee,
+    status: employee.status ?? "active",
+    acceptsSplitShift: employee.acceptsSplitShift ?? true,
+    availabilityMode: employee.availabilityMode ?? {},
+    availability: employee.availability ?? {},
+    secondaryPositions: employee.secondaryPositions ?? [],
+    unavailableDays: employee.unavailableDays ?? [],
+    preferredRestDays: employee.preferredRestDays ?? []
+  };
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [venue, setVenueState] = useState<VenueConfig>(demoState.venue);
   const [employees, setEmployeesState] = useState<Employee[]>(demoState.employees);
@@ -77,7 +90,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const parsed = JSON.parse(stored) as StoredWorkspace;
       setVenueState(parsed.venue);
-      setEmployeesState(parsed.employees);
+      setEmployeesState(parsed.employees.map(normalizeEmployee));
       setSchedule(parsed.schedule);
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -124,7 +137,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
         if (!error && data) {
           setVenueState(data.venue as VenueConfig);
-          setEmployeesState(data.employees as Employee[]);
+          setEmployeesState((data.employees as Employee[]).map(normalizeEmployee));
           setSchedule(data.schedule as GeneratedSchedule);
         }
       setWorkspaceLoading(false);
@@ -190,8 +203,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [employees]);
 
   const setEmployees = useCallback((nextEmployees: Employee[]) => {
-    setEmployeesState(nextEmployees);
-    setSchedule(generateWeeklySchedule(nextEmployees, venue));
+    const normalized = nextEmployees.map(normalizeEmployee);
+    setEmployeesState(normalized);
+    setSchedule(generateWeeklySchedule(normalized, venue));
   }, [venue]);
 
   const replaceSchedule = useCallback((nextSchedule: GeneratedSchedule) => {

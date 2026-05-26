@@ -128,3 +128,26 @@ Luis es de cocina, jornada completa, 40 horas. Puede hacer turno corrido y cerra
 
 La disponibilidad por franjas se guarda en el trabajador y el generador no asigna turnos fuera de esas horas.
 
+## Flujo operativo recomendado
+
+El flujo principal de BASA Shift queda asi:
+
+1. `Bar`: configurar cada dia como cerrado, turno unico o turno partido comida/cena.
+2. `Plantilla`: anadir trabajadores rapido con puesto, horas objetivo, estado y disponibilidad por chips.
+3. `Cuadrante`: generar horario, revisar visualmente, cambiar turnos, anadir manuales, duplicar, borrar o marcar sin cubrir.
+4. `WhatsApp`: preparar mensaje individual por trabajador y abrir enlace `wa.me`.
+
+El turno partido es normal en hosteleria y no se trata como conflicto. Los avisos visibles son simples: turno sin cubrir, puesto sin cubrir o trabajador por encima de horas objetivo.
+
+## Disponibilidad rapida de trabajadores
+
+Cada trabajador puede marcarse por dia como:
+
+- No disponible
+- Comida
+- Cena
+- Todo el dia
+- Personalizado
+
+Tambien se puede duplicar la disponibilidad de otro trabajador para crear plantilla en menos tiempo.
+

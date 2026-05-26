@@ -17,8 +17,19 @@ export const DAY_LABELS = DAYS.reduce(
 
 export const POSITION_LABELS: Record<Position, string> = {
   sala: "Sala",
-  cocina: "Cocina"
+  cocina: "Cocina",
+  barra: "Barra",
+  terraza: "Terraza",
+  encargado: "Encargado"
 };
+
+export const POSITIONS: Position[] = [
+  "sala",
+  "cocina",
+  "barra",
+  "terraza",
+  "encargado"
+];
 
 export const EMPLOYMENT_LABELS: Record<EmploymentType, string> = {
   fullTime: "Completo",
@@ -31,3 +42,11 @@ export const SHIFT_LABELS: Record<ShiftType, string> = {
   cena: "Cena",
   largo8h: "Turno corrido"
 };
+
+export const AVAILABILITY_LABELS = {
+  unavailable: "No disponible",
+  comida: "Comida",
+  cena: "Cena",
+  allDay: "Todo el dia",
+  custom: "Personalizado"
+} as const;

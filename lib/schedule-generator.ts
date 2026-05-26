@@ -103,6 +103,7 @@ function canAssignEmployee(params: {
   const duration = shiftDurationHours(shift.start, shift.end);
   const currentDailyHours = dailyHoursByEmployee[employee.id]?.[shift.day] ?? 0;
 
+  if (employee.status === "inactive") return false;
   if (venue.days[shift.day].closed) return false;
   if (shift.type === "largo8h" && !venue.days[shift.day].longShiftEnabled) return false;
   if (employee.unavailableDays.includes(shift.day)) return false;
@@ -154,6 +155,27 @@ function createAssignment(
     end: shift.end,
     position,
     hours: shiftDurationHours(shift.start, shift.end)
+  };
+}
+
+function createUncoveredAssignment(
+  shift: ShiftTemplate,
+  position: Position,
+  suffix: number
+): ScheduleAssignment {
+  return {
+    id: `uncovered-${shift.id}-${position}-${suffix}`,
+    employeeId: `uncovered-${shift.id}-${position}-${suffix}`,
+    employeeName: "Sin cubrir",
+    day: shift.day,
+    shiftId: shift.id,
+    shiftType: shift.type,
+    label: shift.label,
+    start: shift.start,
+    end: shift.end,
+    position,
+    hours: shiftDurationHours(shift.start, shift.end),
+    uncovered: true
   };
 }
 
@@ -253,6 +275,7 @@ export function generateWeeklySchedule(
       )[0];
 
       if (!selected) {
+        assignments.push(createUncoveredAssignment(shift, position, positionIndex));
         conflicts.push(
           createConflict(
             shift,

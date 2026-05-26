@@ -1,303 +1,249 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useAppState } from "@/components/app-state";
-import { Card, PageHeader } from "@/components/ui";
-import { DAYS, POSITION_LABELS, SHIFT_LABELS } from "@/lib/constants";
-import type { Position } from "@/types";
+import { Button, Card, PageHeader } from "@/components/ui";
+import { DAYS, POSITION_LABELS, POSITIONS, SHIFT_LABELS } from "@/lib/constants";
+import type { DayKey, ShiftTemplate, ShiftType, VenueConfig } from "@/types";
 
-const positions: Position[] = ["sala", "cocina"];
+const serviceShifts: ShiftType[] = ["comida", "cena"];
 
 export default function SettingsPage() {
   const { venue, setVenue } = useAppState();
 
+  function updateVenue(next: VenueConfig) {
+    setVenue(next);
+  }
+
+  function setDayClosed(day: DayKey, closed: boolean) {
+    updateVenue({
+      ...venue,
+      days: {
+        ...venue.days,
+        [day]: { ...venue.days[day], closed }
+      },
+      shifts: venue.shifts.map((shift) =>
+        shift.day === day ? { ...shift, enabled: !closed && shift.enabled } : shift
+      )
+    });
+  }
+
+  function setDayMode(day: DayKey, mode: "single" | "split") {
+    updateVenue({
+      ...venue,
+      days: {
+        ...venue.days,
+        [day]: { ...venue.days[day], closed: false }
+      },
+      shifts: venue.shifts.map((shift) => {
+        if (shift.day !== day) return shift;
+        if (mode === "single") {
+          return { ...shift, enabled: shift.type === "comida" };
+        }
+        return { ...shift, enabled: shift.type === "comida" || shift.type === "cena" };
+      })
+    });
+  }
+
+  function updateShift(shiftId: string, patch: Partial<ShiftTemplate>) {
+    updateVenue({
+      ...venue,
+      shifts: venue.shifts.map((shift) =>
+        shift.id === shiftId ? { ...shift, ...patch } : shift
+      )
+    });
+  }
+
+  function copyDay(source: DayKey, targets: DayKey[]) {
+    const sourceDay = venue.days[source];
+    const sourceShifts = venue.shifts.filter((shift) => shift.day === source);
+
+    updateVenue({
+      ...venue,
+      days: {
+        ...venue.days,
+        ...Object.fromEntries(
+          targets.map((target) => [
+            target,
+            { ...sourceDay, day: target }
+          ])
+        )
+      },
+      shifts: venue.shifts.map((shift) => {
+        if (!targets.includes(shift.day)) return shift;
+        const sourceMatch = sourceShifts.find((item) => item.type === shift.type);
+        return sourceMatch
+          ? {
+              ...shift,
+              enabled: sourceMatch.enabled,
+              start: sourceMatch.start,
+              end: sourceMatch.end,
+              minWorkers: sourceMatch.minWorkers,
+              positions: sourceMatch.positions
+            }
+          : shift;
+      })
+    });
+  }
+
   return (
     <>
       <PageHeader
-        title="Configuracion del local"
-        description="Aqui el dueno define como abre el bar. Con estos datos BASA Shift genera el horario sin que tenga que cuadrarlo a mano."
+        title="Horario del bar"
+        description="Configura la semana en segundos: cerrado, turno unico o partido comida/cena."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => copyDay("monday", ["tuesday", "wednesday", "thursday", "friday"])}>
+              Copiar lunes a viernes
+            </Button>
+            <Button onClick={() => copyDay("monday", DAYS.map((day) => day.key).filter((day) => day !== "monday"))}>
+              Copiar a toda la semana
+            </Button>
+          </div>
+        }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="p-5">
-          <label className="text-sm font-bold text-deep/70" htmlFor="venueName">
-            Nombre del local
-          </label>
+      <Card className="p-5">
+        <label className="text-sm font-bold text-deep/70">
+          Nombre del local
           <input
-            id="venueName"
             value={venue.name}
-            onChange={(event) => setVenue({ ...venue, name: event.target.value })}
-            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-ink outline-none focus:border-electric"
+            onChange={(event) => updateVenue({ ...venue, name: event.target.value })}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink"
+            placeholder="La Corrala"
           />
+        </label>
+      </Card>
 
-          <div className="mt-6 space-y-4">
-            {DAYS.map((day) => {
-              const config = venue.days[day.key];
-              return (
-                <div key={day.key} className="rounded-lg border border-slate-200 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="font-black text-ink">{day.label}</div>
-                      <div className="text-sm text-deep/60">
-                        {config.closed ? "Cerrado" : `${config.opensAt} - ${config.closesAt}`}
-                      </div>
-                    </div>
-                    <label className="flex items-center gap-2 text-sm font-semibold text-deep/70">
-                      <input
-                        type="checkbox"
-                        checked={!config.closed}
-                        onChange={(event) =>
-                          setVenue({
-                            ...venue,
-                            days: {
-                              ...venue.days,
-                              [day.key]: { ...config, closed: !event.target.checked }
-                            }
-                          })
-                        }
-                      />
-                      Abre este dia
-                    </label>
-                  </div>
+      <div className="mt-5 grid gap-4">
+        {DAYS.map((day) => {
+          const dayConfig = venue.days[day.key];
+          const dayShifts = venue.shifts.filter(
+            (shift) => shift.day === day.key && serviceShifts.includes(shift.type)
+          );
+          const enabledCount = dayShifts.filter((shift) => shift.enabled !== false).length;
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <label className="text-sm font-semibold text-deep/70">
-                      Apertura
-                      <input
-                        type="time"
-                        value={config.opensAt}
-                        disabled={config.closed}
-                        onChange={(event) =>
-                          setVenue({
-                            ...venue,
-                            days: {
-                              ...venue.days,
-                              [day.key]: { ...config, opensAt: event.target.value }
-                            }
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100"
-                      />
-                    </label>
-                    <label className="text-sm font-semibold text-deep/70">
-                      Cierre
-                      <input
-                        type="time"
-                        value={config.closesAt}
-                        disabled={config.closed}
-                        onChange={(event) =>
-                          setVenue({
-                            ...venue,
-                            days: {
-                              ...venue.days,
-                              [day.key]: { ...config, closesAt: event.target.value }
-                            }
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100"
-                      />
-                    </label>
-                    <label className="flex items-end gap-2 rounded-lg bg-snow px-3 py-2 text-sm font-semibold text-deep/70">
-                      <input
-                        type="checkbox"
-                        checked={config.longShiftEnabled}
-                        disabled={config.closed}
-                        onChange={(event) =>
-                          setVenue({
-                            ...venue,
-                            days: {
-                              ...venue.days,
-                              [day.key]: {
-                                ...config,
-                                longShiftEnabled: event.target.checked
-                              }
-                            }
-                          })
-                        }
-                      />
-                      Turno corrido
-                    </label>
+          return (
+            <Card key={day.key} className="p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-36">
+                  <div className="text-lg font-black text-ink">{day.label}</div>
+                  <div className="mt-1 text-sm text-deep/60">
+                    {dayConfig.closed ? "Cerrado" : enabledCount > 1 ? "Turno partido" : "Turno unico"}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </Card>
 
-        <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5">
-            <h2 className="text-xl font-black text-ink">Turnos que debe cubrir</h2>
-            <p className="mt-1 text-sm text-deep/65">
-              Activa solo los turnos que existen en tu bar. El minimo se reparte por roles de sala y cocina.
-            </p>
-          </div>
-          <div className="table-scroll overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="bg-deep text-white">
-                <tr>
-                  <th className="px-4 py-3">Activo</th>
-                  <th className="px-4 py-3">Dia</th>
-                  <th className="px-4 py-3">Turno</th>
-                  <th className="px-4 py-3">Horario</th>
-                  <th className="px-4 py-3">Minimo</th>
-                  <th className="px-4 py-3">Roles necesarios</th>
-                </tr>
-              </thead>
-              <tbody>
-                {venue.shifts.map((shift) => {
-                  const dayConfig = venue.days[shift.day];
-                  const disabledByDay =
-                    dayConfig.closed ||
-                    (shift.type === "largo8h" && !dayConfig.longShiftEnabled);
+                <div className="flex flex-wrap gap-2">
+                  <Chip active={dayConfig.closed} onClick={() => setDayClosed(day.key, true)}>Cerrado</Chip>
+                  <Chip active={!dayConfig.closed && enabledCount <= 1} onClick={() => setDayMode(day.key, "single")}>Turno unico</Chip>
+                  <Chip active={!dayConfig.closed && enabledCount > 1} onClick={() => setDayMode(day.key, "split")}>Comida + cena</Chip>
+                  <Chip active={false} onClick={() => copyDay(day.key, DAYS.map((item) => item.key).filter((item) => item !== day.key))}>Duplicar dia</Chip>
+                </div>
+              </div>
 
-                  return (
-                    <tr key={shift.id} className="border-b border-slate-200 bg-white">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={shift.enabled !== false && !disabledByDay}
-                          disabled={disabledByDay}
-                          onChange={(event) =>
-                            setVenue({
-                              ...venue,
-                              shifts: venue.shifts.map((item) =>
-                                item.id === shift.id
-                                  ? { ...item, enabled: event.target.checked }
-                                  : item
-                              )
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-bold text-ink">
-                        {DAYS.find((day) => day.key === shift.day)?.label}
-                      </td>
-                      <td className="px-4 py-3">{SHIFT_LABELS[shift.type]}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
+              {!dayConfig.closed && (
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {dayShifts.map((shift) => (
+                    <div key={shift.id} className="rounded-lg border border-slate-200 bg-snow p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <label className="flex items-center gap-2 text-sm font-black text-ink">
                           <input
-                            type="time"
-                            value={shift.start}
-                            disabled={disabledByDay}
-                            onChange={(event) =>
-                              setVenue({
-                                ...venue,
-                                shifts: venue.shifts.map((item) =>
-                                  item.id === shift.id
-                                    ? { ...item, start: event.target.value }
-                                    : item
-                                )
-                              })
-                            }
-                            className="w-28 rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                            type="checkbox"
+                            checked={shift.enabled !== false}
+                            onChange={(event) => updateShift(shift.id, { enabled: event.target.checked })}
                           />
+                          {SHIFT_LABELS[shift.type]}
+                        </label>
+                        <button
+                          className="text-xs font-bold text-electric"
+                          onClick={() => updateShift(shift.id, { enabled: true })}
+                        >
+                          Añadir franja
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <TimeInput label="Inicio" value={shift.start} onChange={(start) => updateShift(shift.id, { start })} />
+                        <TimeInput label="Fin" value={shift.end} onChange={(end) => updateShift(shift.id, { end })} />
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-[90px_1fr]">
+                        <label className="text-xs font-bold text-deep/60">
+                          Minimo
                           <input
-                            type="time"
-                            value={shift.end}
-                            disabled={disabledByDay}
-                            onChange={(event) =>
-                              setVenue({
-                                ...venue,
-                                shifts: venue.shifts.map((item) =>
-                                  item.id === shift.id
-                                    ? { ...item, end: event.target.value }
-                                    : item
-                                )
-                              })
-                            }
-                            className="w-28 rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                            type="number"
+                            min={1}
+                            max={12}
+                            value={shift.minWorkers}
+                            onChange={(event) => updateShift(shift.id, { minWorkers: Number(event.target.value) })}
+                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-ink"
                           />
+                        </label>
+                        <div>
+                          <div className="text-xs font-bold text-deep/60">Puestos</div>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {POSITIONS.map((position) => (
+                              <label key={position} className="rounded-full bg-white px-2 py-1 text-xs font-bold text-deep">
+                                {POSITION_LABELS[position]}
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={8}
+                                  value={shift.positions.filter((item) => item === position).length}
+                                  onChange={(event) => {
+                                    const count = Number(event.target.value);
+                                    const others = shift.positions.filter((item) => item !== position);
+                                    const positions = [
+                                      ...others,
+                                      ...Array.from({ length: count }, () => position)
+                                    ];
+                                    updateShift(shift.id, {
+                                      positions: positions.length ? positions : [position],
+                                      minWorkers: Math.max(1, positions.length || shift.minWorkers)
+                                    });
+                                  }}
+                                  className="ml-1 w-10 rounded border border-slate-300 px-1 text-ink"
+                                />
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min={1}
-                          max={8}
-                          value={shift.minWorkers}
-                          disabled={disabledByDay}
-                          onChange={(event) =>
-                            setVenue({
-                              ...venue,
-                              shifts: venue.shifts.map((item) =>
-                                item.id === shift.id
-                                  ? { ...item, minWorkers: Number(event.target.value) }
-                                  : item
-                              )
-                            })
-                          }
-                          className="w-20 rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-100"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {positions.map((position) => (
-                            <RoleCounter
-                              key={position}
-                              label={POSITION_LABELS[position]}
-                              value={shift.positions.filter((item) => item === position).length}
-                              disabled={disabledByDay}
-                              onChange={(count) => {
-                                const other = shift.positions.filter((item) => item !== position);
-                                const nextPositions = [
-                                  ...other,
-                                  ...Array.from({ length: count }, () => position)
-                                ];
-                                setVenue({
-                                  ...venue,
-                                  shifts: venue.shifts.map((item) =>
-                                    item.id === shift.id
-                                      ? {
-                                          ...item,
-                                          positions: nextPositions.length
-                                            ? nextPositions
-                                            : [position],
-                                          minWorkers: Math.max(
-                                            1,
-                                            nextPositions.length || item.minWorkers
-                                          )
-                                        }
-                                      : item
-                                  )
-                                });
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          );
+        })}
       </div>
     </>
   );
 }
 
-function RoleCounter({
-  label,
-  value,
-  disabled,
-  onChange
-}: {
-  label: string;
-  value: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-}) {
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <label className="rounded-lg bg-snow px-2 py-1 text-xs font-bold text-deep">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 text-sm font-bold ${
+        active ? "bg-electric text-white" : "bg-snow text-deep hover:bg-cyanx/20"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TimeInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="text-xs font-bold text-deep/60">
       {label}
       <input
-        type="number"
-        min={0}
-        max={8}
+        type="time"
         value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="ml-2 w-14 rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-ink"
       />
     </label>
   );

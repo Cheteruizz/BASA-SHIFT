@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { Workflow } from "@/components/workflow";
 
 export default function Home() {
-  redirect("/assistant");
+  return <Workflow />;
 }

@@ -7,9 +7,11 @@ export type DayKey =
   | "saturday"
   | "sunday";
 
-export type Position = "sala" | "cocina";
+export type Position = "sala" | "cocina" | "barra" | "terraza" | "encargado";
 
 export type EmploymentType = "fullTime" | "partTime";
+export type EmployeeStatus = "active" | "inactive" | "temporary";
+export type AvailabilityMode = "unavailable" | "comida" | "cena" | "allDay" | "custom";
 
 export type ShiftType = "comida" | "tarde" | "cena" | "largo8h";
 
@@ -52,7 +54,10 @@ export interface Employee {
   secondaryPositions: Position[];
   contractedWeeklyHours: number;
   maxHoursPerDay: number;
+  status: EmployeeStatus;
+  acceptsSplitShift: boolean;
   unavailableDays: DayKey[];
+  availabilityMode: Partial<Record<DayKey, AvailabilityMode>>;
   availability: Partial<Record<DayKey, Array<{ start: string; end: string }>>>;
   preferredRestDays: DayKey[];
   canOpen: boolean;
@@ -72,6 +77,7 @@ export interface ScheduleAssignment {
   end: string;
   position: Position;
   hours: number;
+  uncovered?: boolean;
 }
 
 export interface ScheduleConflict {

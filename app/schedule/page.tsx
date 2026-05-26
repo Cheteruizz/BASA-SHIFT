@@ -3,92 +3,184 @@
 import { useMemo, useState } from "react";
 import { useAppState } from "@/components/app-state";
 import { Button, Card, PageHeader } from "@/components/ui";
-import { DAY_LABELS, DAYS, POSITION_LABELS } from "@/lib/constants";
+import { DAYS, POSITION_LABELS, POSITIONS, SHIFT_LABELS } from "@/lib/constants";
 import { formatHours, shiftDurationHours } from "@/lib/time";
-import type { DayKey, Position, ScheduleAssignment } from "@/types";
+import type { DayKey, Position, ScheduleAssignment, ShiftType } from "@/types";
 
-const positions: Position[] = ["sala", "cocina"];
+const UNCOVERED_ID = "__uncovered__";
 
 export default function SchedulePage() {
-  const {
-    employees,
-    schedule,
-    generateSchedule,
-    clearSchedule,
-    updateAssignment
-  } = useAppState();
+  const { employees, venue, schedule, replaceSchedule, generateSchedule } = useAppState();
   const [editing, setEditing] = useState<ScheduleAssignment | null>(null);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
 
-  const assignmentsByEmployeeDay = useMemo(() => {
+  const rows = useMemo(() => {
+    const base = employees.map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+      position: employee.primaryPosition,
+      employeeId: employee.id
+    }));
+    if (schedule.assignments.some((assignment) => assignment.uncovered)) {
+      base.push({ id: UNCOVERED_ID, name: "Sin cubrir", position: "sala" as Position, employeeId: UNCOVERED_ID });
+    }
+    return base;
+  }, [employees, schedule.assignments]);
+
+  const assignmentsByRowDay = useMemo(() => {
     const map = new Map<string, ScheduleAssignment[]>();
     for (const assignment of schedule.assignments) {
-      const key = `${assignment.employeeId}-${assignment.day}`;
+      const rowId = assignment.uncovered ? UNCOVERED_ID : assignment.employeeId;
+      const key = `${rowId}-${assignment.day}`;
       map.set(key, [...(map.get(key) ?? []), assignment]);
     }
     return map;
   }, [schedule.assignments]);
 
+  function saveAssignment(next: ScheduleAssignment) {
+    const assignments = schedule.assignments.map((assignment) =>
+      assignment.id === next.id ? next : assignment
+    );
+    replaceSchedule(rebuild(assignments));
+    setEditing(null);
+  }
+
+  function deleteAssignment(id: string) {
+    replaceSchedule(rebuild(schedule.assignments.filter((assignment) => assignment.id !== id)));
+    setEditing(null);
+  }
+
+  function duplicateAssignment(assignment: ScheduleAssignment) {
+    replaceSchedule(
+      rebuild([
+        ...schedule.assignments,
+        { ...assignment, id: `manual-${Date.now()}` }
+      ])
+    );
+    setEditing(null);
+  }
+
+  function addManual(day: DayKey) {
+    const shift = venue.shifts.find(
+      (item) => item.day === day && item.enabled !== false && !venue.days[item.day].closed
+    );
+    const start = shift?.start ?? "12:00";
+    const end = shift?.end ?? "16:00";
+    const position = shift?.positions[0] ?? "sala";
+    const employee = employees.find((item) => item.status !== "inactive");
+    const assignment: ScheduleAssignment = {
+      id: `manual-${Date.now()}`,
+      employeeId: employee?.id ?? UNCOVERED_ID,
+      employeeName: employee?.name ?? "Sin cubrir",
+      day,
+      shiftId: shift?.id ?? `manual-${day}`,
+      shiftType: shift?.type ?? "comida",
+      label: shift?.label ?? "Manual",
+      start,
+      end,
+      position,
+      hours: shiftDurationHours(start, end),
+      uncovered: !employee
+    };
+    replaceSchedule(rebuild([...schedule.assignments, assignment]));
+  }
+
+  function markUncovered(assignment: ScheduleAssignment) {
+    saveAssignment({
+      ...assignment,
+      employeeId: `uncovered-${assignment.id}`,
+      employeeName: "Sin cubrir",
+      uncovered: true
+    });
+  }
+
+  function rebuild(assignments: ScheduleAssignment[]) {
+    return {
+      ...schedule,
+      assignments,
+      employeeHours: employees.map((employee) => ({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        contractedHours: employee.contractedWeeklyHours,
+        assignedHours: assignments
+          .filter((assignment) => assignment.employeeId === employee.id && !assignment.uncovered)
+          .reduce((total, assignment) => total + assignment.hours, 0)
+      })),
+      conflicts: assignments
+        .filter((assignment) => assignment.uncovered)
+        .map((assignment) => ({
+          id: `conflict-${assignment.id}`,
+          day: assignment.day,
+          shiftId: assignment.shiftId,
+          shiftLabel: assignment.label,
+          position: assignment.position,
+          missingWorkers: 1,
+          reason: "Turno sin cubrir",
+          severity: "media" as const
+        }))
+    };
+  }
+
   return (
     <>
       <PageHeader
-        title="Cuadrante semanal"
-        description="Tabla operativa por trabajador y día, con horas totales, conflictos y mensajes individuales para WhatsApp."
+        title="Cuadrante visual"
+        description="Genera, revisa y ajusta el horario manualmente antes de enviarlo."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={generateSchedule}>Regenerar horario</Button>
-            <Button variant="secondary" onClick={() => setShowWhatsapp((value) => !value)}>
-              Preparar WhatsApp
-            </Button>
-            <Button variant="danger" onClick={clearSchedule}>Limpiar horario</Button>
+            <Button onClick={generateSchedule}>Generar horario</Button>
+            <Button variant="secondary" onClick={() => setShowWhatsapp((value) => !value)}>Preparar WhatsApp</Button>
           </div>
         }
       />
 
       <Card className="overflow-hidden">
         <div className="table-scroll overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[1150px] text-left text-sm">
             <thead className="bg-deep text-white">
               <tr>
                 <th className="sticky left-0 z-10 bg-deep px-4 py-3">Trabajador</th>
                 {DAYS.map((day) => (
-                  <th key={day.key} className="px-4 py-3">{day.short}</th>
+                  <th key={day.key} className="px-3 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      {day.short}
+                      <button className="rounded bg-white/15 px-2 py-1 text-xs" onClick={() => addManual(day.key)}>+</button>
+                    </div>
+                  </th>
                 ))}
                 <th className="px-4 py-3">Total</th>
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee) => {
-                const hours = schedule.employeeHours.find(
-                  (item) => item.employeeId === employee.id
-                );
+              {rows.map((row) => {
+                const hours = schedule.employeeHours.find((item) => item.employeeId === row.employeeId);
                 return (
-                  <tr key={employee.id} className="border-b border-slate-200 bg-white align-top">
+                  <tr key={row.id} className="border-b border-slate-200 bg-white align-top">
                     <td className="sticky left-0 z-10 bg-white px-4 py-4">
-                      <div className="font-black text-ink">{employee.name}</div>
-                      <div className="text-xs text-deep/60">{POSITION_LABELS[employee.primaryPosition]}</div>
+                      <div className="font-black text-ink">{row.name}</div>
+                      <div className="text-xs text-deep/60">{POSITION_LABELS[row.position]}</div>
                     </td>
                     {DAYS.map((day) => {
-                      const assignments = assignmentsByEmployeeDay.get(`${employee.id}-${day.key}`) ?? [];
+                      const assignments = assignmentsByRowDay.get(`${row.id}-${day.key}`) ?? [];
                       return (
-                        <td key={day.key} className="min-w-32 px-3 py-3">
+                        <td key={day.key} className="min-w-36 px-2 py-3">
                           {assignments.length === 0 ? (
-                            <span className="text-deep/35">Libre</span>
+                            <span className="text-deep/30">Libre</span>
                           ) : (
                             <div className="space-y-2">
                               {assignments.map((assignment) => (
                                 <button
                                   key={assignment.id}
                                   onClick={() => setEditing(assignment)}
-                                  className="w-full rounded-lg border border-cyanx/30 bg-cyanx/10 p-2 text-left transition hover:border-electric"
+                                  className={`w-full rounded-lg border p-2 text-left ${
+                                    assignment.uncovered
+                                      ? "border-red-300 bg-red-50"
+                                      : "border-cyanx/30 bg-cyanx/10"
+                                  }`}
                                 >
                                   <div className="font-bold text-ink">{assignment.label}</div>
-                                  <div className="text-xs text-deep/70">
-                                    {assignment.start} - {assignment.end}
-                                  </div>
-                                  <div className="text-xs font-bold text-electric">
-                                    {POSITION_LABELS[assignment.position]}
-                                  </div>
+                                  <div className="text-xs text-deep/70">{assignment.start} - {assignment.end}</div>
+                                  <div className="text-xs font-bold text-electric">{POSITION_LABELS[assignment.position]}</div>
                                 </button>
                               ))}
                             </div>
@@ -97,7 +189,7 @@ export default function SchedulePage() {
                       );
                     })}
                     <td className="px-4 py-4 font-black text-ink">
-                      {formatHours(hours?.assignedHours ?? 0)}h
+                      {row.id === UNCOVERED_ID ? "-" : `${formatHours(hours?.assignedHours ?? 0)}h`}
                     </td>
                   </tr>
                 );
@@ -107,114 +199,122 @@ export default function SchedulePage() {
         </div>
       </Card>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
-        <Card className="p-5">
-          <h2 className="text-xl font-black text-ink">Conflictos</h2>
-          <div className="mt-4 space-y-3">
-            {schedule.conflicts.length === 0 ? (
-              <div className="rounded-lg bg-cyanx/12 p-4 text-sm font-semibold text-deep">
-                No hay conflictos pendientes.
-              </div>
-            ) : (
-              schedule.conflicts.map((conflict) => (
-                <div key={conflict.id} className="rounded-lg border border-red-200 bg-red-50 p-4">
-                  <div className="font-bold text-red-800">
-                    {DAY_LABELS[conflict.day]} · {conflict.shiftLabel}
-                  </div>
-                  <div className="text-sm text-red-700">
-                    {POSITION_LABELS[conflict.position]} sin cubrir.
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-
+      <div className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+        <Warnings />
         {showWhatsapp && <WhatsappPanel />}
       </div>
 
       {editing && (
-        <EditAssignmentModal
+        <EditTurn
           assignment={editing}
+          employees={employees}
           onClose={() => setEditing(null)}
-          onSave={(assignment) => {
-            updateAssignment(assignment);
-            setEditing(null);
-          }}
+          onSave={saveAssignment}
+          onDelete={deleteAssignment}
+          onDuplicate={duplicateAssignment}
+          onUncovered={markUncovered}
         />
       )}
     </>
   );
 }
 
-function EditAssignmentModal({
+function Warnings() {
+  const { employees, schedule } = useAppState();
+  const warnings = [
+    ...schedule.conflicts.map((conflict) => `${conflict.shiftLabel}: falta cubrir ${POSITION_LABELS[conflict.position]}`),
+    ...schedule.employeeHours
+      .filter((item) => item.assignedHours > item.contractedHours)
+      .map((item) => `${item.employeeName} supera horas objetivo`)
+  ];
+
+  return (
+    <Card className="p-5">
+      <h2 className="text-xl font-black text-ink">Avisos simples</h2>
+      <div className="mt-4 space-y-2">
+        {warnings.length === 0 ? (
+          <div className="rounded-lg bg-cyanx/12 p-3 text-sm font-bold text-deep">Sin avisos.</div>
+        ) : (
+          warnings.map((warning) => (
+            <div key={warning} className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-800">{warning}</div>
+          ))
+        )}
+      </div>
+      <div className="mt-3 text-xs text-deep/50">Plantilla activa: {employees.filter((employee) => employee.status !== "inactive").length}</div>
+    </Card>
+  );
+}
+
+function EditTurn({
   assignment,
+  employees,
   onClose,
-  onSave
+  onSave,
+  onDelete,
+  onDuplicate,
+  onUncovered
 }: {
   assignment: ScheduleAssignment;
+  employees: ReturnType<typeof useAppState>["employees"];
   onClose: () => void;
   onSave: (assignment: ScheduleAssignment) => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (assignment: ScheduleAssignment) => void;
+  onUncovered: (assignment: ScheduleAssignment) => void;
 }) {
   const [draft, setDraft] = useState(assignment);
 
+  function assignEmployee(employeeId: string) {
+    const employee = employees.find((item) => item.id === employeeId);
+    setDraft({
+      ...draft,
+      employeeId: employee?.id ?? draft.employeeId,
+      employeeName: employee?.name ?? draft.employeeName,
+      uncovered: false
+    });
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/55 px-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-soft">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 px-4">
+      <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-soft">
         <h2 className="text-xl font-black text-ink">Editar turno</h2>
         <div className="mt-4 grid gap-3">
           <label className="text-sm font-bold text-deep/70">
-            Día
-            <select
-              value={draft.day}
-              onChange={(event) => setDraft({ ...draft, day: event.target.value as DayKey })}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            >
-              {DAYS.map((day) => (
-                <option key={day.key} value={day.key}>{day.label}</option>
+            Trabajador
+            <select value={draft.uncovered ? UNCOVERED_ID : draft.employeeId} onChange={(event) => event.target.value === UNCOVERED_ID ? onUncovered(draft) : assignEmployee(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink">
+              <option value={UNCOVERED_ID}>Sin cubrir</option>
+              {employees.filter((employee) => employee.status !== "inactive").map((employee) => (
+                <option key={employee.id} value={employee.id}>{employee.name}</option>
               ))}
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
+            <TimeField label="Inicio" value={draft.start} onChange={(start) => setDraft({ ...draft, start, hours: shiftDurationHours(start, draft.end) })} />
+            <TimeField label="Fin" value={draft.end} onChange={(end) => setDraft({ ...draft, end, hours: shiftDurationHours(draft.start, end) })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <label className="text-sm font-bold text-deep/70">
-              Inicio
-              <input
-                type="time"
-                value={draft.start}
-                onChange={(event) => {
-                  const start = event.target.value;
-                  setDraft({ ...draft, start, hours: shiftDurationHours(start, draft.end) });
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              />
+              Puesto
+              <select value={draft.position} onChange={(event) => setDraft({ ...draft, position: event.target.value as Position })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink">
+                {POSITIONS.map((position) => (
+                  <option key={position} value={position}>{POSITION_LABELS[position]}</option>
+                ))}
+              </select>
             </label>
             <label className="text-sm font-bold text-deep/70">
-              Fin
-              <input
-                type="time"
-                value={draft.end}
-                onChange={(event) => {
-                  const end = event.target.value;
-                  setDraft({ ...draft, end, hours: shiftDurationHours(draft.start, end) });
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              />
+              Tipo
+              <select value={draft.shiftType} onChange={(event) => setDraft({ ...draft, shiftType: event.target.value as ShiftType, label: SHIFT_LABELS[event.target.value as ShiftType] })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink">
+                {(["comida", "cena", "tarde", "largo8h"] as ShiftType[]).map((type) => (
+                  <option key={type} value={type}>{SHIFT_LABELS[type]}</option>
+                ))}
+              </select>
             </label>
           </div>
-          <label className="text-sm font-bold text-deep/70">
-            Puesto
-            <select
-              value={draft.position}
-              onChange={(event) => setDraft({ ...draft, position: event.target.value as Position })}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            >
-              {positions.map((position) => (
-                <option key={position} value={position}>{POSITION_LABELS[position]}</option>
-              ))}
-            </select>
-          </label>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button variant="danger" onClick={() => onDelete(draft.id)}>Borrar</Button>
+          <Button variant="secondary" onClick={() => onDuplicate(draft)}>Duplicar</Button>
+          <Button variant="secondary" onClick={() => onUncovered(draft)}>Sin cubrir</Button>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button onClick={() => onSave(draft)}>Guardar</Button>
         </div>
@@ -223,39 +323,29 @@ function EditAssignmentModal({
   );
 }
 
+function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="text-sm font-bold text-deep/70">
+      {label}
+      <input type="time" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink" />
+    </label>
+  );
+}
+
 function WhatsappPanel() {
   const { employees, schedule } = useAppState();
-
   return (
     <Card className="p-5">
-      <h2 className="text-xl font-black text-ink">WhatsApp individual</h2>
-      <p className="mt-1 text-sm text-deep/65">
-        Se prepara un mensaje por trabajador con enlace wa.me. No usa todavía la API oficial.
-      </p>
-      <div className="mt-4 space-y-4">
-        {employees.map((employee) => {
-          const message = buildWhatsappMessage(employee.name, employee.id, schedule.assignments);
-          const encodedMessage = encodeURIComponent(message.text);
-          const link = `https://wa.me/${employee.phone}?text=${encodedMessage}`;
+      <h2 className="text-xl font-black text-ink">WhatsApp</h2>
+      <div className="mt-4 space-y-3">
+        {employees.filter((employee) => employee.status !== "inactive").map((employee) => {
+          const text = buildWhatsappMessage(employee.name, employee.id, schedule.assignments);
+          const href = employee.phone ? `https://wa.me/${employee.phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
           return (
-            <div key={employee.id} className="rounded-lg border border-slate-200 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="font-black text-ink">{employee.name}</div>
-                  <div className="text-sm text-deep/60">{employee.phone}</div>
-                </div>
-                <a
-                  href={link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg bg-electric px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-[#0057d1]"
-                >
-                  Enviar WhatsApp
-                </a>
-              </div>
-              <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-snow p-3 text-sm text-deep">
-                {message.text}
-              </pre>
+            <div key={employee.id} className="rounded-lg border border-slate-200 p-3">
+              <div className="font-black text-ink">{employee.name}</div>
+              <pre className="mt-2 whitespace-pre-wrap rounded bg-snow p-2 text-xs text-deep">{text}</pre>
+              <a className="mt-2 inline-block rounded-lg bg-electric px-3 py-2 text-sm font-bold text-white" href={href} target="_blank" rel="noreferrer">Enviar WhatsApp</a>
             </div>
           );
         })}
@@ -265,28 +355,12 @@ function WhatsappPanel() {
 }
 
 function buildWhatsappMessage(employeeName: string, employeeId: string, assignments: ScheduleAssignment[]) {
-  const employeeAssignments = assignments.filter(
-    (assignment) => assignment.employeeId === employeeId
-  );
+  const employeeAssignments = assignments.filter((assignment) => assignment.employeeId === employeeId);
   const lines = DAYS.map((day) => {
-    const dayAssignments = employeeAssignments.filter(
-      (assignment) => assignment.day === day.key
-    );
-
-    if (dayAssignments.length === 0) {
-      return `${day.label}: Libre`;
-    }
-
-    return `${day.label}: ${dayAssignments
-      .map(
-        (assignment) =>
-          `${assignment.start} - ${assignment.end} · ${POSITION_LABELS[assignment.position]}`
-      )
-      .join(" / ")}`;
+    const dayAssignments = employeeAssignments.filter((assignment) => assignment.day === day.key);
+    if (!dayAssignments.length) return `${day.label}: Libre`;
+    return `${day.label}: ${dayAssignments.map((assignment) => `${assignment.start} - ${assignment.end} - ${POSITION_LABELS[assignment.position]}`).join(" / ")}`;
   });
   const total = employeeAssignments.reduce((sum, assignment) => sum + assignment.hours, 0);
-
-  return {
-    text: `Hola ${employeeName.split(" ")[0]}, este es tu horario de la semana:\n\n${lines.join("\n")}\n\nTotal semanal: ${formatHours(total)} horas.`
-  };
+  return `Hola ${employeeName.split(" ")[0]}, este es tu horario de la semana:\n\n${lines.join("\n")}\n\nTotal semanal: ${formatHours(total)} horas.`;
 }
