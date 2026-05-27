@@ -190,25 +190,85 @@ function drawRow(row: ReturnType<typeof getRows>[number], y: number) {
   return content;
 }
 
-async function createBrandedPdf(schedule: GeneratedSchedule, employees: Employee[]) {
+function conflictLine(conflict: GeneratedSchedule["conflicts"][number]) {
+  const day = DAYS.find((item) => item.key === conflict.day)?.label ?? conflict.day;
+  return `${day} - ${conflict.shiftLabel}: faltan ${conflict.missingWorkers} ${POSITION_LABELS[conflict.position]} (${conflict.reason})`;
+}
+
+function uncoveredLine(assignment: ScheduleAssignment) {
+  const day = DAYS.find((item) => item.key === assignment.day)?.label ?? assignment.day;
+  return `${day} - ${assignment.start}-${assignment.end}: falta ${POSITION_LABELS[assignment.position]} (${assignment.label})`;
+}
+
+function warningLines(schedule: GeneratedSchedule) {
+  const lines = [
+    ...schedule.conflicts.map(conflictLine),
+    ...schedule.assignments
+      .filter((assignment) => assignment.uncovered)
+      .map(uncoveredLine)
+  ];
+  return Array.from(new Set(lines));
+}
+
+function drawWarnings(lines: string[], y: number) {
+  if (!lines.length) {
+    return [
+      rect(MARGIN, y - 24, PAGE_WIDTH - MARGIN * 2, 24, colors.pale),
+      text("Sin avisos: todo queda cubierto segun la configuracion actual.", MARGIN + 10, y - 15, 8, colors.deep, "F2")
+    ].join("\n");
+  }
+
+  const height = 28 + Math.min(lines.length, 8) * 14;
+  let content = rect(MARGIN, y - height, PAGE_WIDTH - MARGIN * 2, height, colors.redBg);
+  content += `\n${outline(MARGIN, y - height, PAGE_WIDTH - MARGIN * 2, height, colors.red, 0.8)}`;
+  content += `\n${text("AVISOS IMPORTANTES - FALTA CUBRIR", MARGIN + 10, y - 17, 10, colors.red, "F2")}`;
+  lines.slice(0, 8).forEach((lineItem, index) => {
+    content += `\n${text(truncate(lineItem, 132), MARGIN + 12, y - 34 - index * 14, 7.2, colors.red, "F2")}`;
+  });
+  if (lines.length > 8) {
+    content += `\n${text(`+${lines.length - 8} avisos mas`, MARGIN + 12, y - 34 - 8 * 14, 7.2, colors.red, "F2")}`;
+  }
+  return content;
+}
+
+function formatWeek(weekStart?: string) {
+  if (!weekStart) return "Semana no indicada";
+  return `Semana del ${new Date(weekStart).toLocaleDateString("es-ES")}`;
+}
+
+async function createBrandedPdf(schedule: GeneratedSchedule, employees: Employee[], weekStart?: string) {
   const logo = await loadLogo();
   const rows = getRows(schedule, employees);
   const rowsPerPage = Math.floor((TABLE_TOP - 45) / ROW_HEIGHT);
+  const warnings = warningLines(schedule);
   const pages: string[] = [];
 
   for (let pageIndex = 0; pageIndex < Math.max(1, Math.ceil(rows.length / rowsPerPage)); pageIndex += 1) {
     const pageRows = rows.slice(pageIndex * rowsPerPage, (pageIndex + 1) * rowsPerPage);
     let content = header(
-      "Cuadrante semanal BASA Shift",
-      `Pagina ${pageIndex + 1} - ${employees.filter((employee) => employee.status !== "inactive").length} trabajadores`,
+    "Cuadrante semanal BASA Shift",
+      `${formatWeek(weekStart)} - Pagina ${pageIndex + 1} - ${employees.filter((employee) => employee.status !== "inactive").length} trabajadores`,
       Boolean(logo)
     );
     content += `\n${drawTableHeader(TABLE_TOP)}`;
     pageRows.forEach((row, index) => {
       content += `\n${drawRow(row, TABLE_TOP - 24 - (index + 1) * ROW_HEIGHT)}`;
     });
+    if (pageIndex === 0) {
+      const warningY = TABLE_TOP - 24 - pageRows.length * ROW_HEIGHT - 16;
+      if (warningY > 72) {
+        content += `\n${drawWarnings(warnings, warningY)}`;
+      }
+    }
     content += `\n${text("BASA Digital - BASA Shift", MARGIN, 22, 7, colors.steel)}`;
     content += `\n${text("Los turnos en rojo quedan sin cubrir.", PAGE_WIDTH - MARGIN - 170, 22, 7, colors.steel)}`;
+    pages.push(content);
+  }
+
+  if (warnings.length && rows.length >= rowsPerPage) {
+    let content = header("Avisos de cobertura BASA Shift", `${formatWeek(weekStart)} - Puestos y turnos que requieren ajuste`, Boolean(logo));
+    content += `\n${drawWarnings(warnings, TABLE_TOP)}`;
+    content += `\n${text("BASA Digital - BASA Shift", MARGIN, 22, 7, colors.steel)}`;
     pages.push(content);
   }
 
@@ -251,8 +311,8 @@ function createPdfDocument(pages: string[], logo: PdfImage) {
   return pdf;
 }
 
-export async function downloadSchedulePdf(schedule: GeneratedSchedule, employees: Employee[]) {
-  const pdf = await createBrandedPdf(schedule, employees);
+export async function downloadSchedulePdf(schedule: GeneratedSchedule, employees: Employee[], weekStart?: string) {
+  const pdf = await createBrandedPdf(schedule, employees, weekStart);
   const blob = new Blob([pdf], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

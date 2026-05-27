@@ -52,7 +52,7 @@ export function Workflow() {
     const generated = generateWeeklySchedule(employees, venue);
     replaceSchedule(generated);
     saveScheduleToHistory(generated);
-    downloadSchedulePdf(generated, employees);
+    downloadSchedulePdf(generated, employees, weekStart);
     setStep("schedule");
     setReviewOpen(true);
   }
@@ -302,12 +302,12 @@ function TeamStep({ onNext }: { onNext: () => void }) {
 }
 
 function ScheduleStep({ onNext }: { onNext: () => void }) {
-  const { employees, venue, schedule, replaceSchedule } = useAppState();
+  const { employees, venue, schedule, weekStart, replaceSchedule } = useAppState();
 
   function handleGenerateSchedule() {
     const generated = generateWeeklySchedule(employees, venue);
     replaceSchedule(generated);
-    downloadSchedulePdf(generated, employees);
+    downloadSchedulePdf(generated, employees, weekStart);
   }
 
   return (
