@@ -26,7 +26,7 @@ export default function SchedulePage() {
     const generated = generateWeeklySchedule(employees, venue);
     replaceSchedule(generated);
     saveScheduleToHistory(generated);
-    downloadSchedulePdf(generated, employees, weekStart);
+    downloadSchedulePdf(generated, employees, weekStart, venue.name);
     setReviewOpen(true);
   }
 
@@ -177,7 +177,7 @@ export default function SchedulePage() {
               <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
               <Button variant="secondary" onClick={handleGenerateSchedule}>Regenerar</Button>
               <Button onClick={() => setShowWhatsapp(true)}>Preparar WhatsApp</Button>
-              <Button variant="secondary" onClick={() => downloadSchedulePdf(schedule, employees, weekStart)}>Descargar PDF otra vez</Button>
+              <Button variant="secondary" onClick={() => downloadSchedulePdf(schedule, employees, weekStart, venue.name)}>Descargar PDF otra vez</Button>
             </div>
           </div>
         </Card>
