@@ -6,7 +6,7 @@ import { Button, Card, PageHeader } from "@/components/ui";
 import { DAYS, POSITION_LABELS, POSITIONS, SHIFT_LABELS } from "@/lib/constants";
 import type { DayKey, ShiftTemplate, ShiftType, VenueConfig } from "@/types";
 
-const serviceShifts: ShiftType[] = ["comida", "cena"];
+const serviceShifts: ShiftType[] = ["comida", "cena", "largo8h"];
 
 export default function SettingsPage() {
   const { venue, setVenue } = useAppState();
@@ -28,17 +28,20 @@ export default function SettingsPage() {
     });
   }
 
-  function setDayMode(day: DayKey, mode: "single" | "split") {
+  function setDayMode(day: DayKey, mode: "single" | "split" | "fullDay") {
     updateVenue({
       ...venue,
       days: {
         ...venue.days,
-        [day]: { ...venue.days[day], closed: false }
+        [day]: { ...venue.days[day], closed: false, longShiftEnabled: mode === "fullDay" }
       },
       shifts: venue.shifts.map((shift) => {
         if (shift.day !== day) return shift;
         if (mode === "single") {
           return { ...shift, enabled: shift.type === "comida" };
+        }
+        if (mode === "fullDay") {
+          return { ...shift, enabled: shift.type === "comida" || shift.type === "cena" || shift.type === "largo8h" };
         }
         return { ...shift, enabled: shift.type === "comida" || shift.type === "cena" };
       })
@@ -90,7 +93,7 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title="Horario del bar"
-        description="Configura la semana en segundos: cerrado, turno unico o partido comida/cena."
+        description="Configura la semana en segundos: cerrado, turno unico, partido o abierto todo el dia con corridos."
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => copyDay("monday", ["tuesday", "wednesday", "thursday", "friday"])}>
@@ -121,7 +124,10 @@ export default function SettingsPage() {
           const dayShifts = venue.shifts.filter(
             (shift) => shift.day === day.key && serviceShifts.includes(shift.type)
           );
-          const enabledCount = dayShifts.filter((shift) => shift.enabled !== false).length;
+          const enabledShifts = dayShifts.filter((shift) => shift.enabled !== false);
+          const enabledCount = enabledShifts.length;
+          const longShiftActive = enabledShifts.some((shift) => shift.type === "largo8h");
+          const fullDayActive = longShiftActive && enabledShifts.some((shift) => shift.type === "comida") && enabledShifts.some((shift) => shift.type === "cena");
 
           return (
             <Card key={day.key} className="p-4">
@@ -129,14 +135,15 @@ export default function SettingsPage() {
                 <div className="min-w-36">
                   <div className="text-lg font-black text-ink">{day.label}</div>
                   <div className="mt-1 text-sm text-deep/60">
-                    {dayConfig.closed ? "Cerrado" : enabledCount > 1 ? "Turno partido" : "Turno unico"}
+                    {dayConfig.closed ? "Cerrado" : fullDayActive ? "Abierto todo el dia" : longShiftActive ? "Turno corrido" : enabledCount > 1 ? "Turno partido" : "Turno unico"}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <Chip active={dayConfig.closed} onClick={() => setDayClosed(day.key, true)}>Cerrado</Chip>
-                  <Chip active={!dayConfig.closed && enabledCount <= 1} onClick={() => setDayMode(day.key, "single")}>Turno unico</Chip>
-                  <Chip active={!dayConfig.closed && enabledCount > 1} onClick={() => setDayMode(day.key, "split")}>Comida + cena</Chip>
+                  <Chip active={!dayConfig.closed && !longShiftActive && enabledCount <= 1} onClick={() => setDayMode(day.key, "single")}>Turno unico</Chip>
+                  <Chip active={!dayConfig.closed && !longShiftActive && enabledCount > 1} onClick={() => setDayMode(day.key, "split")}>Comida + cena</Chip>
+                  <Chip active={!dayConfig.closed && fullDayActive} onClick={() => setDayMode(day.key, "fullDay")}>Abierto todo el dia</Chip>
                   <Chip active={false} onClick={() => copyDay(day.key, DAYS.map((item) => item.key).filter((item) => item !== day.key))}>Duplicar dia</Chip>
                 </div>
               </div>

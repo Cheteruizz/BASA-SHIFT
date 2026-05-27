@@ -5,6 +5,8 @@ import { Button, Card, PageHeader } from "@/components/ui";
 import { useAppState } from "@/components/app-state";
 import { ChatAssistant } from "@/components/chat-assistant";
 import { DAYS, POSITION_LABELS } from "@/lib/constants";
+import { downloadSchedulePdf } from "@/lib/pdf-export";
+import { generateWeeklySchedule } from "@/lib/schedule-generator";
 import { formatHours } from "@/lib/time";
 import Link from "next/link";
 
@@ -19,11 +21,20 @@ const steps: Array<{ key: WorkflowStep; label: string; href: string }> = [
 
 export function Workflow() {
   const [step, setStep] = useState<WorkflowStep>("bar");
-  const { venue, employees, schedule, generateSchedule } = useAppState();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const { venue, employees, schedule, replaceSchedule } = useAppState();
 
   const activeEmployees = employees.filter((employee) => employee.status !== "inactive");
   const openDays = DAYS.filter((day) => !venue.days[day.key].closed);
   const uncovered = schedule.assignments.filter((assignment) => assignment.uncovered).length;
+
+  function handleGenerateSchedule() {
+    const generated = generateWeeklySchedule(employees, venue);
+    replaceSchedule(generated);
+    downloadSchedulePdf(generated, employees);
+    setStep("schedule");
+    setReviewOpen(true);
+  }
 
   return (
     <>
@@ -31,9 +42,26 @@ export function Workflow() {
         title="Crear horario semanal"
         description="Un unico flujo: configura el bar, revisa plantilla, genera el cuadrante y envia WhatsApp."
         action={
-          <Button onClick={generateSchedule}>Generar horario</Button>
+          <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
         }
       />
+
+      {reviewOpen && (
+        <Card className="mb-5 border-cyanx/30 bg-cyanx/10 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-ink">Horario generado</h2>
+              <p className="text-sm text-deep/70">
+                Se ha descargado el PDF. Revisa si seguimos con este horario o haz pequenos cambios en el cuadrante.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
+              <Button onClick={() => setStep("send")}>Preparar WhatsApp</Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="mb-5 grid gap-3 md:grid-cols-4">
         <MiniStat label="Bar" value={venue.name || "Sin nombre"} detail={`${openDays.length} dias abiertos`} />
@@ -137,7 +165,14 @@ function TeamStep({ onNext }: { onNext: () => void }) {
 }
 
 function ScheduleStep({ onNext }: { onNext: () => void }) {
-  const { schedule, generateSchedule } = useAppState();
+  const { employees, venue, schedule, replaceSchedule } = useAppState();
+
+  function handleGenerateSchedule() {
+    const generated = generateWeeklySchedule(employees, venue);
+    replaceSchedule(generated);
+    downloadSchedulePdf(generated, employees);
+  }
+
   return (
     <Card className="p-5">
       <h2 className="text-xl font-black text-ink">Cuadrante</h2>
@@ -151,7 +186,7 @@ function ScheduleStep({ onNext }: { onNext: () => void }) {
         {schedule.employeeHours.length === 0 && <div className="rounded-lg bg-snow p-3 text-sm font-bold text-deep">Genera el horario cuando tengas bar y plantilla.</div>}
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
-        <Button onClick={generateSchedule}>Generar ahora</Button>
+        <Button onClick={handleGenerateSchedule}>Generar ahora y PDF</Button>
         <Link href="/schedule"><Button variant="secondary">Editar cuadrante</Button></Link>
         <Button onClick={onNext}>Siguiente: WhatsApp</Button>
       </div>

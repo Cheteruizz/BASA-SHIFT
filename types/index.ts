@@ -19,7 +19,14 @@ export type Position =
 
 export type EmploymentType = "fullTime" | "partTime";
 export type EmployeeStatus = "active" | "inactive" | "temporary";
-export type AvailabilityMode = "unavailable" | "comida" | "cena" | "allDay" | "custom";
+export type AvailabilityMode =
+  | "unavailable"
+  | "comida"
+  | "cena"
+  | "allDay"
+  | "split"
+  | "longShift"
+  | "custom";
 
 export type ShiftType = "comida" | "tarde" | "cena" | "largo8h";
 

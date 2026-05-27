@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useAppState } from "@/components/app-state";
 import { Button, Card, PageHeader } from "@/components/ui";
 import {
@@ -108,7 +109,7 @@ export default function EmployeesPage() {
 
       <Card className="p-5">
         <h2 className="text-xl font-black text-ink">{editingId ? "Editar trabajador" : "Añadir trabajador rápido"}</h2>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
           <input
             value={draft.name}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
@@ -142,14 +143,27 @@ export default function EmployeesPage() {
             <option value="temporary">Temporal</option>
             <option value="inactive">Inactivo</option>
           </select>
-          <label className="flex items-center gap-2 rounded-lg bg-snow px-3 py-2 text-sm font-bold text-deep">
-            <input
-              type="checkbox"
-              checked={draft.acceptsSplitShift}
-              onChange={(event) => setDraft({ ...draft, acceptsSplitShift: event.target.checked })}
-            />
-            Turno partido
-          </label>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ToggleChip
+            active={draft.canOpen}
+            onClick={() => setDraft({ ...draft, canOpen: !draft.canOpen })}
+          >
+            Puede abrir
+          </ToggleChip>
+          <ToggleChip
+            active={draft.canClose}
+            onClick={() => setDraft({ ...draft, canClose: !draft.canClose })}
+          >
+            Puede cerrar
+          </ToggleChip>
+          <ToggleChip
+            active={draft.canWorkLongShift}
+            onClick={() => setDraft({ ...draft, canWorkLongShift: !draft.canWorkLongShift })}
+          >
+            Puede corrido
+          </ToggleChip>
         </div>
 
         <AvailabilityEditor employee={draft} onChange={setDraft} />
@@ -176,6 +190,7 @@ export default function EmployeesPage() {
                 <th className="px-4 py-3">Puesto</th>
                 <th className="px-4 py-3">Horas</th>
                 <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Apertura/cierre</th>
                 <th className="px-4 py-3">Disponibilidad</th>
                 <th className="px-4 py-3">Copiar disponibilidad</th>
                 <th className="px-4 py-3">Acciones</th>
@@ -225,6 +240,19 @@ export default function EmployeesPage() {
                         <option value="temporary">Temporal</option>
                         <option value="inactive">Inactivo</option>
                       </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <ToggleChip active={employee.canOpen} onClick={() => patchEmployee(employee.id, { canOpen: !employee.canOpen })}>
+                          Abre
+                        </ToggleChip>
+                        <ToggleChip active={employee.canClose} onClick={() => patchEmployee(employee.id, { canClose: !employee.canClose })}>
+                          Cierra
+                        </ToggleChip>
+                        <ToggleChip active={employee.canWorkLongShift} onClick={() => patchEmployee(employee.id, { canWorkLongShift: !employee.canWorkLongShift })}>
+                          Corrido
+                        </ToggleChip>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="grid grid-cols-7 gap-1">
@@ -287,11 +315,25 @@ function AvailabilityEditor({ employee, onChange }: { employee: Employee; onChan
       availability[day] = [{ start: "20:00", end: "02:00" }];
     } else if (mode === "allDay") {
       availability[day] = [];
+    } else if (mode === "split") {
+      availability[day] = [
+        { start: "12:00", end: "16:00" },
+        { start: "20:00", end: "00:00" }
+      ];
+    } else if (mode === "longShift") {
+      availability[day] = [{ start: "12:00", end: "20:00" }];
     } else {
       availability[day] = availability[day]?.length ? availability[day] : [{ start: "12:00", end: "16:00" }];
     }
 
-    onChange(normalizeEmployee({ ...employee, availabilityMode, availability, unavailableDays }));
+    onChange(normalizeEmployee({
+      ...employee,
+      availabilityMode,
+      availability,
+      unavailableDays,
+      acceptsSplitShift: mode === "split" ? true : employee.acceptsSplitShift,
+      canWorkLongShift: mode === "longShift" ? true : employee.canWorkLongShift
+    }));
   }
 
   return (
@@ -306,7 +348,7 @@ function AvailabilityEditor({ employee, onChange }: { employee: Employee; onChan
             <div key={day.key} className="rounded-lg bg-white p-3">
               <div className="mb-2 font-bold text-ink">{DAY_LABELS[day.key]}</div>
               <div className="flex flex-wrap gap-2">
-                {(["unavailable", "comida", "cena", "allDay", "custom"] as AvailabilityMode[]).map((item) => (
+                {(["unavailable", "comida", "cena", "allDay", "split", "longShift", "custom"] as AvailabilityMode[]).map((item) => (
                   <button
                     key={item}
                     type="button"
@@ -359,12 +401,29 @@ function AvailabilityEditor({ employee, onChange }: { employee: Employee; onChan
   );
 }
 
+function ToggleChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 text-xs font-black ${
+        active ? "bg-electric text-white" : "bg-snow text-deep"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function normalizeEmployee(employee: Employee): Employee {
   return {
     ...employee,
     name: employee.name.trim(),
     status: employee.status ?? "active",
     acceptsSplitShift: employee.acceptsSplitShift ?? true,
+    canOpen: employee.canOpen ?? true,
+    canClose: employee.canClose ?? true,
+    canWorkLongShift: employee.canWorkLongShift ?? true,
     availabilityMode: employee.availabilityMode ?? defaultAvailability,
     availability: employee.availability ?? {}
   };

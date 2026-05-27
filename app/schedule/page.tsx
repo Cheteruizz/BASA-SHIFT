@@ -4,15 +4,25 @@ import { useMemo, useState } from "react";
 import { useAppState } from "@/components/app-state";
 import { Button, Card, PageHeader } from "@/components/ui";
 import { DAYS, POSITION_LABELS, POSITIONS, SHIFT_LABELS } from "@/lib/constants";
+import { downloadSchedulePdf } from "@/lib/pdf-export";
+import { generateWeeklySchedule } from "@/lib/schedule-generator";
 import { formatHours, shiftDurationHours } from "@/lib/time";
 import type { DayKey, Position, ScheduleAssignment, ShiftType } from "@/types";
 
 const UNCOVERED_ID = "__uncovered__";
 
 export default function SchedulePage() {
-  const { employees, venue, schedule, replaceSchedule, generateSchedule } = useAppState();
+  const { employees, venue, schedule, replaceSchedule } = useAppState();
   const [editing, setEditing] = useState<ScheduleAssignment | null>(null);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  function handleGenerateSchedule() {
+    const generated = generateWeeklySchedule(employees, venue);
+    replaceSchedule(generated);
+    downloadSchedulePdf(generated, employees);
+    setReviewOpen(true);
+  }
 
   const rows = useMemo(() => {
     const base = employees.map((employee) => ({
@@ -83,6 +93,7 @@ export default function SchedulePage() {
       uncovered: !employee
     };
     replaceSchedule(rebuild([...schedule.assignments, assignment]));
+    setEditing(assignment);
   }
 
   function markUncovered(assignment: ScheduleAssignment) {
@@ -128,11 +139,29 @@ export default function SchedulePage() {
         description="Genera, revisa y ajusta el horario manualmente antes de enviarlo."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={generateSchedule}>Generar horario</Button>
+            <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
             <Button variant="secondary" onClick={() => setShowWhatsapp((value) => !value)}>Preparar WhatsApp</Button>
           </div>
         }
       />
+
+      {reviewOpen && (
+        <Card className="mb-5 border-cyanx/30 bg-cyanx/10 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-ink">Horario generado</h2>
+              <p className="text-sm text-deep/70">
+                Se ha descargado el PDF. Revisa el cuadrante: puedes seguir con este horario o hacer pequeños cambios tocando cualquier turno.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
+              <Button onClick={() => setShowWhatsapp(true)}>Preparar WhatsApp</Button>
+              <Button variant="secondary" onClick={() => downloadSchedulePdf(schedule, employees)}>Descargar PDF otra vez</Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="table-scroll overflow-x-auto">
@@ -179,6 +208,7 @@ export default function SchedulePage() {
                                   }`}
                                 >
                                   <div className="font-bold text-ink">{assignment.label}</div>
+                                  <div className="text-xs font-black text-deep">{assignment.employeeName}</div>
                                   <div className="text-xs text-deep/70">{assignment.start} - {assignment.end}</div>
                                   <div className="text-xs font-bold text-electric">{POSITION_LABELS[assignment.position]}</div>
                                 </button>
@@ -287,6 +317,15 @@ function EditTurn({
                 <option key={employee.id} value={employee.id}>{employee.name}</option>
               ))}
             </select>
+          </label>
+          <label className="text-sm font-bold text-deep/70">
+            Nombre del turno
+            <input
+              value={draft.label}
+              onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-ink"
+              placeholder="Comida, cena, preparacion..."
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <TimeField label="Inicio" value={draft.start} onChange={(start) => setDraft({ ...draft, start, hours: shiftDurationHours(start, draft.end) })} />

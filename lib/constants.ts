@@ -54,5 +54,7 @@ export const AVAILABILITY_LABELS = {
   comida: "Comida",
   cena: "Cena",
   allDay: "Todo el dia",
+  split: "Partido",
+  longShift: "Corrido",
   custom: "Personalizado"
 } as const;
