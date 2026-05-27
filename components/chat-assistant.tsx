@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useAppState } from "@/components/app-state";
 import { DAYS, POSITION_LABELS } from "@/lib/constants";
 import { generateWeeklySchedule } from "@/lib/schedule-generator";
-import { formatHours } from "@/lib/time";
-import type { DayKey, Employee, Position, VenueConfig } from "@/types";
+import { formatHours, shiftDurationHours } from "@/lib/time";
+import type { DayKey, Employee, Position, ScheduleAssignment, ShiftType, VenueConfig } from "@/types";
 
 type Phase = "collecting" | "review" | "approved";
 
@@ -90,6 +90,13 @@ export function ChatAssistant({ compact = false }: { compact?: boolean }) {
 
     setMessages((current) => [...current, { role: "owner", text }]);
     setInput("");
+
+    const localChange = applyLocalScheduleChange(text);
+    if (localChange) {
+      setMessages((current) => [...current, { role: "bot", text: localChange, kind: "schedule" }]);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -120,6 +127,87 @@ export function ChatAssistant({ compact = false }: { compact?: boolean }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function applyLocalScheduleChange(text: string) {
+    const lower = normalize(text);
+    const employee = employees.find((item) => lower.includes(normalize(item.name)));
+    const day = findDay(lower);
+    const shiftType = findShiftType(lower);
+    const position = findPosition(lower, employee?.primaryPosition);
+    const timeRange = findTimeRange(text);
+
+    if (!employee || !day || (!shiftType && !timeRange)) return null;
+
+    const existing = schedule.assignments.find((assignment) => {
+      if (assignment.employeeId !== employee.id) return false;
+      if (assignment.day !== day) return false;
+      if (shiftType && assignment.shiftType !== shiftType) return false;
+      return true;
+    });
+
+    const template = venue.shifts.find((shift) => shift.day === day && (shiftType ? shift.type === shiftType : shift.enabled !== false));
+    const start = timeRange?.start ?? template?.start ?? (shiftType === "cena" ? "20:00" : "12:00");
+    const end = timeRange?.end ?? template?.end ?? (shiftType === "cena" ? "00:00" : "16:00");
+    const label = template?.label ?? (shiftType ? shiftLabel(shiftType) : "Manual");
+    const nextAssignment: ScheduleAssignment = existing
+      ? {
+          ...existing,
+          start,
+          end,
+          hours: shiftDurationHours(start, end),
+          position,
+          explanation: "Cambio aplicado por el asistente."
+        }
+      : {
+          id: `assistant-${Date.now()}`,
+          employeeId: employee.id,
+          employeeName: employee.name,
+          day,
+          shiftId: template?.id ?? `assistant-${day}`,
+          shiftType: shiftType ?? template?.type ?? "comida",
+          label,
+          start,
+          end,
+          position,
+          hours: shiftDurationHours(start, end),
+          explanation: "Turno creado por el asistente."
+        };
+
+    const assignments = existing
+      ? schedule.assignments.map((assignment) => assignment.id === existing.id ? nextAssignment : assignment)
+      : [...schedule.assignments, nextAssignment];
+
+    replaceSchedule(rebuildSchedule(assignments));
+    saveWorkspace();
+    return `${existing ? "Cambio aplicado" : "Turno anadido"}: ${employee.name}, ${dayName(day)}, ${start}-${end}, ${POSITION_LABELS[position]}.`;
+  }
+
+  function rebuildSchedule(assignments: ScheduleAssignment[]) {
+    return {
+      ...schedule,
+      assignments,
+      employeeHours: employees.map((employee) => ({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        contractedHours: employee.contractedWeeklyHours,
+        assignedHours: assignments
+          .filter((assignment) => assignment.employeeId === employee.id && !assignment.uncovered)
+          .reduce((sum, assignment) => sum + assignment.hours, 0)
+      })),
+      conflicts: assignments
+        .filter((assignment) => assignment.uncovered)
+        .map((assignment) => ({
+          id: `conflict-${assignment.id}`,
+          day: assignment.day,
+          shiftId: assignment.shiftId,
+          shiftLabel: assignment.label,
+          position: assignment.position,
+          missingWorkers: 1,
+          reason: "Turno sin cubrir",
+          severity: "media" as const
+        }))
+    };
   }
 
   function applyAi(ai: AiResponse) {
@@ -214,6 +302,65 @@ function serializeVenue(venue: VenueConfig) {
     openDays: DAYS.filter((day) => !venue.days[day.key].closed).map((day) => day.key),
     days: venue.days
   };
+}
+
+function normalize(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function findDay(value: string): DayKey | null {
+  const aliases: Record<DayKey, string[]> = {
+    monday: ["lunes", "lun"],
+    tuesday: ["martes", "mar"],
+    wednesday: ["miercoles", "miércoles", "mie"],
+    thursday: ["jueves", "jue"],
+    friday: ["viernes", "vie"],
+    saturday: ["sabado", "sábado", "sab"],
+    sunday: ["domingo", "dom"]
+  };
+  return DAYS.find((day) => aliases[day.key].some((alias) => value.includes(normalize(alias))))?.key ?? null;
+}
+
+function dayName(day: DayKey) {
+  return DAYS.find((item) => item.key === day)?.label ?? day;
+}
+
+function findShiftType(value: string): ShiftType | null {
+  if (value.includes("cena") || value.includes("noche")) return "cena";
+  if (value.includes("comida") || value.includes("mediodia") || value.includes("medio dia")) return "comida";
+  if (value.includes("tarde")) return "tarde";
+  if (value.includes("corrido") || value.includes("8h") || value.includes("8 horas")) return "largo8h";
+  return null;
+}
+
+function shiftLabel(type: ShiftType) {
+  const labels: Record<ShiftType, string> = {
+    comida: "Comida",
+    tarde: "Tarde",
+    cena: "Cena",
+    largo8h: "Turno corrido"
+  };
+  return labels[type];
+}
+
+function findPosition(value: string, fallback: Position = "sala"): Position {
+  if (value.includes("cocina")) return "cocina";
+  if (value.includes("barra")) return "barra";
+  if (value.includes("terraza")) return "terraza";
+  if (value.includes("encargado")) return "encargado";
+  if (value.includes("ayudante cocina")) return "ayudante_cocina";
+  if (value.includes("ayudante camarero")) return "ayudante_camarero";
+  if (value.includes("mantenimiento")) return "mantenimiento";
+  if (value.includes("sala")) return "sala";
+  return fallback;
+}
+
+function findTimeRange(value: string) {
+  const match = value.match(/(\d{1,2})(?::(\d{2}))?\s*(?:-|a|hasta)\s*(\d{1,2})(?::(\d{2}))?/i);
+  if (!match) return null;
+  const start = `${match[1].padStart(2, "0")}:${match[2] ?? "00"}`;
+  const end = `${match[3].padStart(2, "0")}:${match[4] ?? "00"}`;
+  return { start, end };
 }
 
 function serializeEmployee(employee: Employee) {

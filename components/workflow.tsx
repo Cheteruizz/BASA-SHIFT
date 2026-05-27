@@ -88,21 +88,11 @@ export function Workflow() {
       )}
 
       {reviewOpen && (
-        <Card className="mb-5 border-cyanx/30 bg-cyanx/10 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-lg font-black text-ink">Horario generado</h2>
-              <p className="text-sm text-deep/70">
-                Se ha descargado el PDF. Puedes aceptar, regenerar o pedir cambios al asistente, por ejemplo cambiar a Ana al sabado cena, o editar el cuadrante a mano.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
-              <Button variant="secondary" onClick={handleGenerateSchedule}>Regenerar</Button>
-              <Button onClick={() => setStep("send")}>Preparar WhatsApp</Button>
-            </div>
-          </div>
-        </Card>
+        <ReviewPanel
+          onAccept={() => setReviewOpen(false)}
+          onRegenerate={handleGenerateSchedule}
+          onSend={() => setStep("send")}
+        />
       )}
 
       <div className="mb-5 grid gap-3 md:grid-cols-4">
@@ -174,6 +164,57 @@ function MiniStat({ label, value, detail }: { label: string; value: string | num
       <div className="text-sm font-semibold text-deep/60">{label}</div>
       <div className="mt-2 truncate text-2xl font-black text-ink">{value}</div>
       <div className="mt-1 text-sm text-deep/60">{detail}</div>
+    </Card>
+  );
+}
+
+function ReviewPanel({
+  onAccept,
+  onRegenerate,
+  onSend
+}: {
+  onAccept: () => void;
+  onRegenerate: () => void;
+  onSend: () => void;
+}) {
+  const { schedule } = useAppState();
+  const totalHours = schedule.employeeHours.reduce((sum, item) => sum + item.assignedHours, 0);
+  const uncovered = schedule.assignments.filter((assignment) => assignment.uncovered).length;
+  const overTarget = schedule.employeeHours.filter((item) => item.assignedHours > item.contractedHours).length;
+
+  return (
+    <Card className="mb-5 overflow-hidden border-cyanx/30">
+      <div className="bg-ink px-5 py-4 text-white">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-xl font-black">Revision del horario</h2>
+            <p className="mt-1 text-sm text-snow/70">
+              PDF descargado. Acepta, regenera o pide cambios al asistente sin rehacer todo.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onAccept}>Aceptar horario</Button>
+            <Button variant="secondary" onClick={onRegenerate}>Regenerar</Button>
+            <Button variant="secondary" onClick={onSend}>WhatsApp</Button>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-3 p-4 md:grid-cols-4">
+        <MiniStat label="Turnos" value={schedule.assignments.length} detail="asignaciones generadas" />
+        <MiniStat label="Horas" value={`${formatHours(totalHours)}h`} detail="total semana" />
+        <MiniStat label="Sin cubrir" value={uncovered} detail="requieren ajuste" />
+        <MiniStat label="Sobre objetivo" value={overTarget} detail="trabajadores" />
+      </div>
+      <div className="border-t border-slate-200 px-5 py-4">
+        <div className="grid gap-2 md:grid-cols-3">
+          {schedule.employeeHours.slice(0, 6).map((item) => (
+            <div key={item.employeeId} className="rounded-lg bg-snow px-3 py-2 text-sm">
+              <span className="font-black text-ink">{item.employeeName}</span>
+              <span className="ml-2 text-deep/60">{formatHours(item.assignedHours)}h / {item.contractedHours}h</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }
