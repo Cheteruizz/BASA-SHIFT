@@ -157,8 +157,18 @@ function createConflict(
 function createAssignment(
   employee: Employee,
   shift: ShiftTemplate,
-  position: Position
+  position: Position,
+  currentHours: number
 ): ScheduleAssignment {
+  const reasons = [
+    `compatible con ${position}`,
+    `${currentHours}h asignadas antes del turno`
+  ];
+  if (employee.primaryPosition === position) reasons.unshift("puesto principal");
+  if (employee.secondaryPositions.includes(position)) reasons.unshift("puesto secundario");
+  if (employee.preferredWorkDays?.includes(shift.day)) reasons.push("dia preferido");
+  if (employee.availability?.[shift.day]?.length) reasons.push("disponibilidad horaria encaja");
+
   return {
     id: `assignment-${shift.id}-${employee.id}-${position}`,
     employeeId: employee.id,
@@ -170,7 +180,8 @@ function createAssignment(
     start: shift.start,
     end: shift.end,
     position,
-    hours: shiftDurationHours(shift.start, shift.end)
+    hours: shiftDurationHours(shift.start, shift.end),
+    explanation: `Asignado por ${reasons.join(", ")}.`
   };
 }
 
@@ -191,7 +202,8 @@ function createUncoveredAssignment(
     end: shift.end,
     position,
     hours: shiftDurationHours(shift.start, shift.end),
-    uncovered: true
+    uncovered: true,
+    explanation: "No se encontro trabajador activo compatible con disponibilidad suficiente."
   };
 }
 
@@ -308,7 +320,7 @@ export function generateWeeklySchedule(
         continue;
       }
 
-      const assignment = createAssignment(selected, shift, position);
+      const assignment = createAssignment(selected, shift, position, hoursByEmployee[selected.id]);
       assignments.push(assignment);
       hoursByEmployee[selected.id] += assignment.hours;
       dailyHoursByEmployee[selected.id][shift.day] =

@@ -6,20 +6,26 @@ import { Button, Card, PageHeader } from "@/components/ui";
 import { DAYS, POSITION_LABELS, POSITIONS, SHIFT_LABELS } from "@/lib/constants";
 import { downloadSchedulePdf } from "@/lib/pdf-export";
 import { generateWeeklySchedule } from "@/lib/schedule-generator";
+import { validateBeforeGenerate } from "@/lib/schedule-validation";
 import { formatHours, shiftDurationHours } from "@/lib/time";
 import type { DayKey, Position, ScheduleAssignment, ShiftType } from "@/types";
 
 const UNCOVERED_ID = "__uncovered__";
 
 export default function SchedulePage() {
-  const { employees, venue, schedule, replaceSchedule } = useAppState();
+  const { employees, venue, schedule, history, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory } = useAppState();
   const [editing, setEditing] = useState<ScheduleAssignment | null>(null);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
 
   function handleGenerateSchedule() {
+    const issues = validateBeforeGenerate(venue, employees);
+    setValidationIssues(issues);
+    if (issues.length) return;
     const generated = generateWeeklySchedule(employees, venue);
     replaceSchedule(generated);
+    saveScheduleToHistory(generated);
     downloadSchedulePdf(generated, employees);
     setReviewOpen(true);
   }
@@ -90,7 +96,8 @@ export default function SchedulePage() {
       end,
       position,
       hours: shiftDurationHours(start, end),
-      uncovered: !employee
+      uncovered: !employee,
+      explanation: "Turno anadido manualmente."
     };
     replaceSchedule(rebuild([...schedule.assignments, assignment]));
     setEditing(assignment);
@@ -151,14 +158,26 @@ export default function SchedulePage() {
             <div>
               <h2 className="text-lg font-black text-ink">Horario generado</h2>
               <p className="text-sm text-deep/70">
-                Se ha descargado el PDF. Revisa el cuadrante: puedes seguir con este horario o hacer pequeños cambios tocando cualquier turno.
+                Se ha descargado el PDF. Puedes aceptar, regenerar o hacer cambios tocando cualquier turno. Tambien puedes pedir cambios al asistente desde la pantalla principal.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
+              <Button variant="secondary" onClick={handleGenerateSchedule}>Regenerar</Button>
               <Button onClick={() => setShowWhatsapp(true)}>Preparar WhatsApp</Button>
               <Button variant="secondary" onClick={() => downloadSchedulePdf(schedule, employees)}>Descargar PDF otra vez</Button>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {validationIssues.length > 0 && (
+        <Card className="mb-5 border-red-200 bg-red-50 p-4">
+          <h2 className="text-lg font-black text-red-800">Antes de generar falta esto</h2>
+          <div className="mt-2 grid gap-2">
+            {validationIssues.map((issue) => (
+              <div key={issue} className="text-sm font-bold text-red-800">{issue}</div>
+            ))}
           </div>
         </Card>
       )}
@@ -211,6 +230,9 @@ export default function SchedulePage() {
                                   <div className="text-xs font-black text-deep">{assignment.employeeName}</div>
                                   <div className="text-xs text-deep/70">{assignment.start} - {assignment.end}</div>
                                   <div className="text-xs font-bold text-electric">{POSITION_LABELS[assignment.position]}</div>
+                                  {assignment.explanation && (
+                                    <div className="mt-1 text-[11px] text-deep/55">{assignment.explanation}</div>
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -233,6 +255,26 @@ export default function SchedulePage() {
         <Warnings />
         {showWhatsapp && <WhatsappPanel />}
       </div>
+
+      {history.length > 0 && (
+        <Card className="mt-5 p-5">
+          <h2 className="text-xl font-black text-ink">Historial</h2>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => loadScheduleFromHistory(item.id)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-deep hover:border-cyanx"
+              >
+                {item.label}
+                <span className="block text-xs font-normal text-deep/55">
+                  {new Date(item.createdAt).toLocaleString("es-ES")}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {editing && (
         <EditTurn
@@ -398,8 +440,8 @@ function buildWhatsappMessage(employeeName: string, employeeId: string, assignme
   const lines = DAYS.map((day) => {
     const dayAssignments = employeeAssignments.filter((assignment) => assignment.day === day.key);
     if (!dayAssignments.length) return `${day.label}: Libre`;
-    return `${day.label}: ${dayAssignments.map((assignment) => `${assignment.start} - ${assignment.end} - ${POSITION_LABELS[assignment.position]}`).join(" / ")}`;
+    return `${day.label}: ${dayAssignments.map((assignment) => `${assignment.start} - ${assignment.end} · ${POSITION_LABELS[assignment.position]} · ${assignment.label}`).join(" / ")}`;
   });
   const total = employeeAssignments.reduce((sum, assignment) => sum + assignment.hours, 0);
-  return `Hola ${employeeName.split(" ")[0]}, este es tu horario de la semana:\n\n${lines.join("\n")}\n\nTotal semanal: ${formatHours(total)} horas.`;
+  return `Hola ${employeeName.split(" ")[0]}, este es tu horario de la semana:\n\n${lines.join("\n")}\n\nTotal semanal: ${formatHours(total)} horas.\n\nSi ves algun problema, responde a este WhatsApp y lo revisamos.`;
 }

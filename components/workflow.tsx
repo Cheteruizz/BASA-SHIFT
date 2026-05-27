@@ -7,6 +7,7 @@ import { ChatAssistant } from "@/components/chat-assistant";
 import { DAYS, POSITION_LABELS } from "@/lib/constants";
 import { downloadSchedulePdf } from "@/lib/pdf-export";
 import { generateWeeklySchedule } from "@/lib/schedule-generator";
+import { validateBeforeGenerate } from "@/lib/schedule-validation";
 import { formatHours } from "@/lib/time";
 import Link from "next/link";
 
@@ -22,15 +23,32 @@ const steps: Array<{ key: WorkflowStep; label: string; href: string }> = [
 export function Workflow() {
   const [step, setStep] = useState<WorkflowStep>("bar");
   const [reviewOpen, setReviewOpen] = useState(false);
-  const { venue, employees, schedule, replaceSchedule } = useAppState();
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
+  const {
+    venue,
+    employees,
+    schedule,
+    history,
+    replaceSchedule,
+    saveScheduleToHistory,
+    loadScheduleFromHistory,
+    resetWorkspace
+  } = useAppState();
 
   const activeEmployees = employees.filter((employee) => employee.status !== "inactive");
   const openDays = DAYS.filter((day) => !venue.days[day.key].closed);
   const uncovered = schedule.assignments.filter((assignment) => assignment.uncovered).length;
 
   function handleGenerateSchedule() {
+    const issues = validateBeforeGenerate(venue, employees);
+    setValidationIssues(issues);
+    if (issues.length) {
+      setStep("bar");
+      return;
+    }
     const generated = generateWeeklySchedule(employees, venue);
     replaceSchedule(generated);
+    saveScheduleToHistory(generated);
     downloadSchedulePdf(generated, employees);
     setStep("schedule");
     setReviewOpen(true);
@@ -42,9 +60,32 @@ export function Workflow() {
         title="Crear horario semanal"
         description="Un unico flujo: configura el bar, revisa plantilla, genera el cuadrante y envia WhatsApp."
         action={
-          <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
+            <Button variant="secondary" onClick={() => {
+              if (window.confirm("Esto borra bar, plantilla, horarios e historial local. ¿Empezar de cero?")) {
+                resetWorkspace();
+                setValidationIssues([]);
+                setReviewOpen(false);
+                setStep("bar");
+              }
+            }}>
+              Empezar de cero
+            </Button>
+          </div>
         }
       />
+
+      {validationIssues.length > 0 && (
+        <Card className="mb-5 border-red-200 bg-red-50 p-4">
+          <h2 className="text-lg font-black text-red-800">Antes de generar falta esto</h2>
+          <div className="mt-2 grid gap-2">
+            {validationIssues.map((issue) => (
+              <div key={issue} className="text-sm font-bold text-red-800">{issue}</div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {reviewOpen && (
         <Card className="mb-5 border-cyanx/30 bg-cyanx/10 p-4">
@@ -52,11 +93,12 @@ export function Workflow() {
             <div>
               <h2 className="text-lg font-black text-ink">Horario generado</h2>
               <p className="text-sm text-deep/70">
-                Se ha descargado el PDF. Revisa si seguimos con este horario o haz pequenos cambios en el cuadrante.
+                Se ha descargado el PDF. Puedes aceptar, regenerar o pedir cambios al asistente, por ejemplo cambiar a Ana al sabado cena, o editar el cuadrante a mano.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setReviewOpen(false)}>Seguir con este</Button>
+              <Button variant="secondary" onClick={handleGenerateSchedule}>Regenerar</Button>
               <Button onClick={() => setStep("send")}>Preparar WhatsApp</Button>
             </div>
           </div>
@@ -94,6 +136,28 @@ export function Workflow() {
           {step === "team" && <TeamStep onNext={() => setStep("schedule")} />}
           {step === "schedule" && <ScheduleStep onNext={() => setStep("send")} />}
           {step === "send" && <SendStep />}
+          {history.length > 0 && (
+            <Card className="mt-5 p-5">
+              <h2 className="text-xl font-black text-ink">Historial de horarios</h2>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {history.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      loadScheduleFromHistory(item.id);
+                      setStep("schedule");
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-deep hover:border-cyanx"
+                  >
+                    {item.label}
+                    <span className="block text-xs font-normal text-deep/55">
+                      {new Date(item.createdAt).toLocaleString("es-ES")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
 
         <div className="xl:sticky xl:top-24 xl:self-start">
@@ -203,7 +267,12 @@ function SendStep() {
         {employees.filter((employee) => employee.status !== "inactive").map((employee) => {
           const assignments = schedule.assignments.filter((assignment) => assignment.employeeId === employee.id);
           const total = assignments.reduce((sum, assignment) => sum + assignment.hours, 0);
-          const text = `Hola ${employee.name.split(" ")[0]}, este es tu horario semanal. Total: ${formatHours(total)} horas.`;
+          const lines = DAYS.map((day) => {
+            const dayAssignments = assignments.filter((assignment) => assignment.day === day.key);
+            if (!dayAssignments.length) return `${day.label}: Libre`;
+            return `${day.label}: ${dayAssignments.map((assignment) => `${assignment.start} - ${assignment.end} · ${POSITION_LABELS[assignment.position]} · ${assignment.label}`).join(" / ")}`;
+          });
+          const text = `Hola ${employee.name.split(" ")[0]}, este es tu horario de la semana:\n\n${lines.join("\n")}\n\nTotal semanal: ${formatHours(total)} horas.\n\nSi ves algun problema, responde a este WhatsApp y lo revisamos.`;
           const href = employee.phone ? `https://wa.me/${employee.phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
           return (
             <a key={employee.id} href={href} target="_blank" rel="noreferrer" className="rounded-lg bg-electric px-4 py-3 text-sm font-bold text-white">

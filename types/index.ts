@@ -94,6 +94,7 @@ export interface ScheduleAssignment {
   position: Position;
   hours: number;
   uncovered?: boolean;
+  explanation?: string;
 }
 
 export interface ScheduleConflict {
@@ -118,6 +119,13 @@ export interface GeneratedSchedule {
   assignments: ScheduleAssignment[];
   employeeHours: EmployeeHours[];
   conflicts: ScheduleConflict[];
+}
+
+export interface ScheduleHistoryItem {
+  id: string;
+  label: string;
+  createdAt: string;
+  schedule: GeneratedSchedule;
 }
 
 export interface DemoState {

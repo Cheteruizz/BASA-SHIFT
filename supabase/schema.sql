@@ -6,9 +6,13 @@ create table if not exists public.basa_workspaces (
   venue jsonb not null default '{}'::jsonb,
   employees jsonb not null default '[]'::jsonb,
   schedule jsonb not null default '{}'::jsonb,
+  history jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.basa_workspaces
+add column if not exists history jsonb not null default '[]'::jsonb;
 
 alter table public.basa_workspaces enable row level security;
 

@@ -148,7 +148,13 @@ export function ChatAssistant({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    setMessages((current) => [...current, { role: "bot", text: ai.reply }]);
+    setMessages((current) => [
+      ...current,
+      {
+        role: "bot",
+        text: `${ai.reply}\n\nGuardado: ${nextVenue.name || "bar sin nombre"} · ${nextEmployees.length} trabajadores · ${nextVenue.shifts.filter((shift) => shift.enabled !== false && !nextVenue.days[shift.day].closed).length} franjas activas.`
+      }
+    ]);
     setPhase(ai.phase);
   }
 

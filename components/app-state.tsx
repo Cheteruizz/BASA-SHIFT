@@ -16,6 +16,7 @@ import type {
   Employee,
   GeneratedSchedule,
   ScheduleAssignment,
+  ScheduleHistoryItem,
   VenueConfig
 } from "@/types";
 import type { User } from "@supabase/supabase-js";
@@ -24,6 +25,7 @@ interface AppStateContextValue {
   venue: VenueConfig;
   employees: Employee[];
   schedule: GeneratedSchedule;
+  history: ScheduleHistoryItem[];
   user: User | null;
   authLoading: boolean;
   workspaceLoading: boolean;
@@ -35,7 +37,10 @@ interface AppStateContextValue {
   setVenue: (venue: VenueConfig) => void;
   setEmployees: (employees: Employee[]) => void;
   replaceSchedule: (schedule: GeneratedSchedule) => void;
+  saveScheduleToHistory: (schedule: GeneratedSchedule, label?: string) => void;
+  loadScheduleFromHistory: (id: string) => void;
   saveWorkspace: () => void;
+  resetWorkspace: () => void;
   generateSchedule: () => void;
   clearSchedule: () => void;
   updateAssignment: (assignment: ScheduleAssignment) => void;
@@ -52,6 +57,7 @@ interface StoredWorkspace {
   venue: VenueConfig;
   employees: Employee[];
   schedule: GeneratedSchedule;
+  history?: ScheduleHistoryItem[];
 }
 
 function normalizeEmployee(employee: Employee): Employee {
@@ -74,6 +80,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [schedule, setSchedule] = useState<GeneratedSchedule>(() =>
     generateWeeklySchedule(demoState.employees, demoState.venue)
   );
+  const [history, setHistory] = useState<ScheduleHistoryItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -96,6 +103,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setVenueState(parsed.venue);
       setEmployeesState(parsed.employees.map(normalizeEmployee));
       setSchedule(parsed.schedule);
+      setHistory(parsed.history ?? []);
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
@@ -106,9 +114,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ venue, employees, schedule })
+      JSON.stringify({ venue, employees, schedule, history })
     );
-  }, [venue, employees, schedule]);
+  }, [venue, employees, schedule, history]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -135,7 +143,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const { data, error } = await supabase
         .from("basa_workspaces")
-        .select("venue, employees, schedule")
+        .select("venue, employees, schedule, history")
         .eq("owner_id", user.id)
         .maybeSingle();
 
@@ -143,6 +151,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setVenueState(data.venue as VenueConfig);
           setEmployeesState((data.employees as Employee[]).map(normalizeEmployee));
           setSchedule(data.schedule as GeneratedSchedule);
+          setHistory((data.history as ScheduleHistoryItem[] | null) ?? []);
         }
       setWorkspaceLoading(false);
     })();
@@ -155,6 +164,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         venue,
         employees,
         schedule,
+        history,
         updated_at: new Date().toISOString()
       });
       return;
@@ -162,9 +172,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ venue, employees, schedule })
+      JSON.stringify({ venue, employees, schedule, history })
     );
-  }, [venue, employees, schedule, user]);
+  }, [venue, employees, schedule, history, user]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) return "Supabase no esta configurado.";
@@ -216,6 +226,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSchedule(nextSchedule);
   }, []);
 
+  const saveScheduleToHistory = useCallback((nextSchedule: GeneratedSchedule, label?: string) => {
+    const item: ScheduleHistoryItem = {
+      id: `history-${Date.now()}`,
+      label: label || `Horario ${new Date().toLocaleDateString("es-ES")}`,
+      createdAt: new Date().toISOString(),
+      schedule: nextSchedule
+    };
+    setHistory((current) => [item, ...current].slice(0, 12));
+  }, []);
+
+  const loadScheduleFromHistory = useCallback((id: string) => {
+    const item = history.find((entry) => entry.id === id);
+    if (item) setSchedule(item.schedule);
+  }, [history]);
+
+  const resetWorkspace = useCallback(() => {
+    setVenueState(demoState.venue);
+    setEmployeesState(demoState.employees);
+    setSchedule(generateWeeklySchedule(demoState.employees, demoState.venue));
+    setHistory([]);
+    if (!isSupabaseConfigured) window.localStorage.removeItem(STORAGE_KEY);
+    if (supabase && user) {
+      void supabase.from("basa_workspaces").delete().eq("owner_id", user.id);
+    }
+  }, [user]);
+
   const clearSchedule = useCallback(() => {
     setSchedule({
       assignments: [],
@@ -253,6 +289,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       venue,
       employees,
       schedule,
+      history,
       user,
       authLoading,
       workspaceLoading,
@@ -264,12 +301,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setVenue,
       setEmployees,
       replaceSchedule,
+      saveScheduleToHistory,
+      loadScheduleFromHistory,
       saveWorkspace,
+      resetWorkspace,
       generateSchedule,
       clearSchedule,
       updateAssignment
     }),
-    [venue, employees, schedule, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, replaceSchedule, saveWorkspace, generateSchedule, clearSchedule, updateAssignment]
+    [venue, employees, schedule, history, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory, saveWorkspace, resetWorkspace, generateSchedule, clearSchedule, updateAssignment]
   );
 
   return (
