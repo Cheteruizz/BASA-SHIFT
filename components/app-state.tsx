@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode
 } from "react";
-import { demoState } from "@/lib/demo-data";
+import { demoState, fullDemoState } from "@/lib/demo-data";
 import { generateWeeklySchedule } from "@/lib/schedule-generator";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type {
@@ -43,6 +43,7 @@ interface AppStateContextValue {
   loadScheduleFromHistory: (id: string) => void;
   saveWorkspace: () => void;
   resetWorkspace: () => void;
+  loadFullDemo: () => void;
   generateSchedule: () => void;
   clearSchedule: () => void;
   updateAssignment: (assignment: ScheduleAssignment) => void;
@@ -273,6 +274,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  const loadFullDemo = useCallback(() => {
+    const generated = generateWeeklySchedule(fullDemoState.employees, fullDemoState.venue);
+    setVenueState(fullDemoState.venue);
+    setEmployeesState(fullDemoState.employees.map(normalizeEmployee));
+    setSchedule(generated);
+    setHistory([]);
+    setWeekStartState(getCurrentMonday());
+  }, []);
+
   const clearSchedule = useCallback(() => {
     setSchedule({
       assignments: [],
@@ -328,11 +338,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       loadScheduleFromHistory,
       saveWorkspace,
       resetWorkspace,
+      loadFullDemo,
       generateSchedule,
       clearSchedule,
       updateAssignment
     }),
-    [venue, employees, schedule, history, weekStart, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, setWeekStart, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory, saveWorkspace, resetWorkspace, generateSchedule, clearSchedule, updateAssignment]
+    [venue, employees, schedule, history, weekStart, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, setWeekStart, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory, saveWorkspace, resetWorkspace, loadFullDemo, generateSchedule, clearSchedule, updateAssignment]
   );
 
   return (

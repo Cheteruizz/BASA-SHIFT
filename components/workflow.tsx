@@ -34,7 +34,8 @@ export function Workflow() {
     replaceSchedule,
     saveScheduleToHistory,
     loadScheduleFromHistory,
-    resetWorkspace
+    resetWorkspace,
+    loadFullDemo
   } = useAppState();
 
   const activeEmployees = employees.filter((employee) => employee.status !== "inactive");
@@ -64,6 +65,16 @@ export function Workflow() {
         action={
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
+            <Button variant="secondary" onClick={() => {
+              if (window.confirm("Cargar demo completo sustituira los datos actuales. ¿Continuar?")) {
+                loadFullDemo();
+                setValidationIssues([]);
+                setReviewOpen(false);
+                setStep("bar");
+              }
+            }}>
+              Cargar demo completo
+            </Button>
             <Button variant="secondary" onClick={() => {
               if (window.confirm("Esto borra bar, plantilla, horarios e historial local. ¿Empezar de cero?")) {
                 resetWorkspace();
