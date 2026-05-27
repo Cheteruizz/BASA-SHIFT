@@ -15,10 +15,26 @@ type HoursMap = Record<string, number>;
 type DayHoursMap = Record<string, Partial<Record<DayKey, number>>>;
 
 function employeeSupportsPosition(employee: Employee, position: Position): boolean {
-  return (
-    employee.primaryPosition === position ||
-    employee.secondaryPositions.includes(position)
-  );
+  const employeePositions = [employee.primaryPosition, ...employee.secondaryPositions];
+  if (employeePositions.includes(position)) return true;
+
+  if (position === "cocina") {
+    return employeePositions.includes("ayudante_cocina");
+  }
+
+  if (position === "sala" || position === "barra" || position === "terraza") {
+    return employeePositions.includes("ayudante_camarero");
+  }
+
+  if (position === "ayudante_cocina") {
+    return employeePositions.includes("cocina");
+  }
+
+  if (position === "ayudante_camarero") {
+    return employeePositions.some((item) => item === "sala" || item === "barra" || item === "terraza");
+  }
+
+  return false;
 }
 
 function shiftStartsAtOpening(venue: VenueConfig, shift: ShiftTemplate): boolean {

@@ -35,7 +35,7 @@ const schema = {
         properties: {
           name: { type: "string" },
           phone: { type: "string" },
-          role: { type: "string", enum: ["sala", "cocina", "barra", "terraza", "encargado"] },
+          role: { type: "string", enum: ["sala", "cocina", "barra", "terraza", "encargado", "ayudante_cocina", "ayudante_camarero", "mantenimiento"] },
           employmentType: { type: "string", enum: ["fullTime", "partTime"] },
           weeklyHours: { type: "integer" },
           maxHoursPerDay: { type: "integer" },
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: "Eres BASA Shift, chatbot para duenos de bares. Entiende lenguaje natural en espanol, no inventes trabajadores, pide solo lo que falte, y devuelve JSON valido. Mapea camarero/barra/terraza a sala y cocinero/cocina a cocina. Extrae disponibilidad horaria de trabajadores cuando el usuario diga cosas como 'Ana solo puede martes de 12 a 16', 'Luis solo noches', 'Marta puede fines de semana'. Si no se indica disponibilidad, devuelve arrays vacios para cada dia. Si el usuario dice listo/genera y hay datos suficientes, scheduleAction generate. Si aprueba, approve."
+          content: "Eres BASA Shift, chatbot para duenos de bares. Entiende lenguaje natural en espanol, no inventes trabajadores, pide solo lo que falte, y devuelve JSON valido. Usa roles validos: sala, cocina, barra, terraza, encargado, ayudante_cocina, ayudante_camarero, mantenimiento. Mapea camarero a sala, ayudante de camarero a ayudante_camarero, cocinero a cocina, ayudante de cocina a ayudante_cocina, mantenimiento/limpieza/arreglos a mantenimiento. Extrae disponibilidad horaria de trabajadores cuando el usuario diga cosas como 'Ana solo puede martes de 12 a 16', 'Luis solo noches', 'Marta puede fines de semana'. Si no se indica disponibilidad, devuelve arrays vacios para cada dia. Si el usuario dice listo/genera y hay datos suficientes, scheduleAction generate. Si aprueba, approve."
         },
         {
           role: "user",

@@ -7,7 +7,15 @@ export type DayKey =
   | "saturday"
   | "sunday";
 
-export type Position = "sala" | "cocina" | "barra" | "terraza" | "encargado";
+export type Position =
+  | "sala"
+  | "cocina"
+  | "barra"
+  | "terraza"
+  | "encargado"
+  | "ayudante_cocina"
+  | "ayudante_camarero"
+  | "mantenimiento";
 
 export type EmploymentType = "fullTime" | "partTime";
 export type EmployeeStatus = "active" | "inactive" | "temporary";

@@ -102,7 +102,7 @@ export default function EmployeesPage() {
         </Card>
         <Card className="p-4">
           <div className="text-sm font-semibold text-deep/60">Puestos</div>
-          <div className="mt-2 text-lg font-black text-ink">Sala, cocina, barra, terraza</div>
+          <div className="mt-2 text-lg font-black text-ink">Sala, cocina, ayudantes, mantenimiento</div>
         </Card>
       </div>
 

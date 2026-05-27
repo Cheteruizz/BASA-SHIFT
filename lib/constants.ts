@@ -20,7 +20,10 @@ export const POSITION_LABELS: Record<Position, string> = {
   cocina: "Cocina",
   barra: "Barra",
   terraza: "Terraza",
-  encargado: "Encargado"
+  encargado: "Encargado",
+  ayudante_cocina: "Ayudante cocina",
+  ayudante_camarero: "Ayudante camarero",
+  mantenimiento: "Mantenimiento"
 };
 
 export const POSITIONS: Position[] = [
@@ -28,7 +31,10 @@ export const POSITIONS: Position[] = [
   "cocina",
   "barra",
   "terraza",
-  "encargado"
+  "encargado",
+  "ayudante_cocina",
+  "ayudante_camarero",
+  "mantenimiento"
 ];
 
 export const EMPLOYMENT_LABELS: Record<EmploymentType, string> = {
