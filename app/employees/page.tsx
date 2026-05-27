@@ -167,6 +167,11 @@ export default function EmployeesPage() {
           </ToggleChip>
         </div>
 
+        <PositionChips
+          employee={draft}
+          onChange={setDraft}
+        />
+
         <AvailabilityEditor employee={draft} onChange={setDraft} />
         <PreferredDaysEditor employee={draft} onChange={setDraft} />
 
@@ -220,6 +225,13 @@ export default function EmployeesPage() {
                           <option key={position} value={position}>{POSITION_LABELS[position]}</option>
                         ))}
                       </select>
+                      <PositionChips
+                        compact
+                        employee={employee}
+                        onChange={(nextEmployee) => patchEmployee(employee.id, {
+                          secondaryPositions: nextEmployee.secondaryPositions
+                        })}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <input
@@ -405,6 +417,58 @@ function AvailabilityEditor({ employee, onChange }: { employee: Employee; onChan
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function PositionChips({
+  employee,
+  onChange,
+  compact = false
+}: {
+  employee: Employee;
+  onChange: (employee: Employee) => void;
+  compact?: boolean;
+}) {
+  function togglePosition(position: Position) {
+    const secondaryPositions = employee.secondaryPositions.includes(position)
+      ? employee.secondaryPositions.filter((item) => item !== position)
+      : [...employee.secondaryPositions, position];
+
+    onChange(normalizeEmployee({
+      ...employee,
+      secondaryPositions: secondaryPositions.filter((item) => item !== employee.primaryPosition)
+    }));
+  }
+
+  const options = POSITIONS.filter((position) => position !== employee.primaryPosition);
+
+  return (
+    <div className={compact ? "mt-2" : "mt-4 rounded-lg bg-snow p-3"}>
+      {!compact && (
+        <>
+          <div className="text-sm font-black text-ink">Tambien puede hacer</div>
+          <p className="mt-1 text-xs text-deep/60">
+            Sirve para perfiles mixtos, por ejemplo barra/sala o cocina/ayudante cocina.
+          </p>
+        </>
+      )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((position) => (
+          <button
+            key={position}
+            type="button"
+            onClick={() => togglePosition(position)}
+            className={`rounded-full px-3 py-1.5 text-xs font-black ${
+              employee.secondaryPositions.includes(position)
+                ? "bg-electric text-white"
+                : "bg-white text-deep"
+            }`}
+          >
+            {POSITION_LABELS[position]}
+          </button>
+        ))}
       </div>
     </div>
   );

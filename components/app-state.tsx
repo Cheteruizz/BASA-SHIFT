@@ -42,8 +42,11 @@ interface AppStateContextValue {
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
-const STORAGE_KEY = "basa-shift-chatbot-workspace-v1";
-const OLD_STORAGE_KEYS = ["basa-shift-workspace"];
+const STORAGE_KEY = "basa-shift-chatbot-workspace-v2";
+const OLD_STORAGE_KEYS = [
+  "basa-shift-workspace",
+  "basa-shift-chatbot-workspace-v1"
+];
 
 interface StoredWorkspace {
   venue: VenueConfig;
