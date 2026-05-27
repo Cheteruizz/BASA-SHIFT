@@ -29,6 +29,8 @@ export function Workflow() {
     employees,
     schedule,
     history,
+    weekStart,
+    setWeekStart,
     replaceSchedule,
     saveScheduleToHistory,
     loadScheduleFromHistory,
@@ -58,7 +60,7 @@ export function Workflow() {
     <>
       <PageHeader
         title="Crear horario semanal"
-        description="Un unico flujo: configura el bar, revisa plantilla, genera el cuadrante y envia WhatsApp."
+        description={`Horario para la semana del ${new Date(weekStart).toLocaleDateString("es-ES")}. Configura, genera, revisa y envia.`}
         action={
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
@@ -75,6 +77,23 @@ export function Workflow() {
           </div>
         }
       />
+
+      <Card className="mb-5 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <label className="text-sm font-black text-deep">
+            Semana del horario
+            <input
+              type="date"
+              value={weekStart}
+              onChange={(event) => setWeekStart(event.target.value)}
+              className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-ink"
+            />
+          </label>
+          <div className="text-sm text-deep/65">
+            El historial se guarda por semana para reutilizar horarios anteriores como base.
+          </div>
+        </div>
+      </Card>
 
       {validationIssues.length > 0 && (
         <Card className="mb-5 border-red-200 bg-red-50 p-4">
@@ -135,14 +154,16 @@ export function Workflow() {
                     key={item.id}
                     onClick={() => {
                       loadScheduleFromHistory(item.id);
+                      setWeekStart(item.weekStart);
                       setStep("schedule");
                     }}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-deep hover:border-cyanx"
                   >
                     {item.label}
                     <span className="block text-xs font-normal text-deep/55">
-                      {new Date(item.createdAt).toLocaleString("es-ES")}
+                      Semana: {new Date(item.weekStart).toLocaleDateString("es-ES")} · Guardado: {new Date(item.createdAt).toLocaleString("es-ES")}
                     </span>
+                    <span className="mt-1 block text-xs font-black text-electric">Reutilizar como base</span>
                   </button>
                 ))}
               </div>

@@ -13,7 +13,7 @@ import type { DayKey, Position, ScheduleAssignment, ShiftType } from "@/types";
 const UNCOVERED_ID = "__uncovered__";
 
 export default function SchedulePage() {
-  const { employees, venue, schedule, history, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory } = useAppState();
+  const { employees, venue, schedule, history, weekStart, setWeekStart, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory } = useAppState();
   const [editing, setEditing] = useState<ScheduleAssignment | null>(null);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -143,7 +143,7 @@ export default function SchedulePage() {
     <>
       <PageHeader
         title="Cuadrante visual"
-        description="Genera, revisa y ajusta el horario manualmente antes de enviarlo."
+        description={`Semana del ${new Date(weekStart).toLocaleDateString("es-ES")}. Genera, revisa y ajusta antes de enviarlo.`}
         action={
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleGenerateSchedule}>Generar horario y PDF</Button>
@@ -151,6 +151,18 @@ export default function SchedulePage() {
           </div>
         }
       />
+
+      <Card className="mb-5 p-4">
+        <label className="text-sm font-black text-deep">
+          Semana del horario
+          <input
+            type="date"
+            value={weekStart}
+            onChange={(event) => setWeekStart(event.target.value)}
+            className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-ink"
+          />
+        </label>
+      </Card>
 
       {reviewOpen && (
         <Card className="mb-5 border-cyanx/30 bg-cyanx/10 p-4">
@@ -263,13 +275,17 @@ export default function SchedulePage() {
             {history.map((item) => (
               <button
                 key={item.id}
-                onClick={() => loadScheduleFromHistory(item.id)}
+                onClick={() => {
+                  loadScheduleFromHistory(item.id);
+                  setWeekStart(item.weekStart);
+                }}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-deep hover:border-cyanx"
               >
                 {item.label}
                 <span className="block text-xs font-normal text-deep/55">
-                  {new Date(item.createdAt).toLocaleString("es-ES")}
+                  Semana: {new Date(item.weekStart).toLocaleDateString("es-ES")} · Guardado: {new Date(item.createdAt).toLocaleString("es-ES")}
                 </span>
+                <span className="mt-1 block text-xs font-black text-electric">Reutilizar como base</span>
               </button>
             ))}
           </div>

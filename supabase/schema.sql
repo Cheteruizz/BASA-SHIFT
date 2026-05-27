@@ -7,12 +7,16 @@ create table if not exists public.basa_workspaces (
   employees jsonb not null default '[]'::jsonb,
   schedule jsonb not null default '{}'::jsonb,
   history jsonb not null default '[]'::jsonb,
+  week_start date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.basa_workspaces
 add column if not exists history jsonb not null default '[]'::jsonb;
+
+alter table public.basa_workspaces
+add column if not exists week_start date;
 
 alter table public.basa_workspaces enable row level security;
 

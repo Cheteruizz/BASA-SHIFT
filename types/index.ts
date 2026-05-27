@@ -124,6 +124,7 @@ export interface GeneratedSchedule {
 export interface ScheduleHistoryItem {
   id: string;
   label: string;
+  weekStart: string;
   createdAt: string;
   schedule: GeneratedSchedule;
 }

@@ -26,6 +26,7 @@ interface AppStateContextValue {
   employees: Employee[];
   schedule: GeneratedSchedule;
   history: ScheduleHistoryItem[];
+  weekStart: string;
   user: User | null;
   authLoading: boolean;
   workspaceLoading: boolean;
@@ -36,6 +37,7 @@ interface AppStateContextValue {
   signOut: () => Promise<void>;
   setVenue: (venue: VenueConfig) => void;
   setEmployees: (employees: Employee[]) => void;
+  setWeekStart: (weekStart: string) => void;
   replaceSchedule: (schedule: GeneratedSchedule) => void;
   saveScheduleToHistory: (schedule: GeneratedSchedule, label?: string) => void;
   loadScheduleFromHistory: (id: string) => void;
@@ -58,6 +60,15 @@ interface StoredWorkspace {
   employees: Employee[];
   schedule: GeneratedSchedule;
   history?: ScheduleHistoryItem[];
+  weekStart?: string;
+}
+
+function getCurrentMonday() {
+  const date = new Date();
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
 }
 
 function normalizeEmployee(employee: Employee): Employee {
@@ -81,6 +92,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     generateWeeklySchedule(demoState.employees, demoState.venue)
   );
   const [history, setHistory] = useState<ScheduleHistoryItem[]>([]);
+  const [weekStart, setWeekStartState] = useState(getCurrentMonday);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -104,6 +116,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setEmployeesState(parsed.employees.map(normalizeEmployee));
       setSchedule(parsed.schedule);
       setHistory(parsed.history ?? []);
+      setWeekStartState(parsed.weekStart ?? getCurrentMonday());
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
@@ -114,9 +127,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ venue, employees, schedule, history })
+      JSON.stringify({ venue, employees, schedule, history, weekStart })
     );
-  }, [venue, employees, schedule, history]);
+  }, [venue, employees, schedule, history, weekStart]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -143,7 +156,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const { data, error } = await supabase
         .from("basa_workspaces")
-        .select("venue, employees, schedule, history")
+        .select("venue, employees, schedule, history, week_start")
         .eq("owner_id", user.id)
         .maybeSingle();
 
@@ -152,6 +165,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setEmployeesState((data.employees as Employee[]).map(normalizeEmployee));
           setSchedule(data.schedule as GeneratedSchedule);
           setHistory((data.history as ScheduleHistoryItem[] | null) ?? []);
+          setWeekStartState((data.week_start as string | null) ?? getCurrentMonday());
         }
       setWorkspaceLoading(false);
     })();
@@ -165,6 +179,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         employees,
         schedule,
         history,
+        week_start: weekStart,
         updated_at: new Date().toISOString()
       });
       return;
@@ -172,9 +187,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ venue, employees, schedule, history })
+      JSON.stringify({ venue, employees, schedule, history, weekStart })
     );
-  }, [venue, employees, schedule, history, user]);
+  }, [venue, employees, schedule, history, weekStart, user]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) return "Supabase no esta configurado.";
@@ -222,6 +237,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSchedule(generateWeeklySchedule(normalized, venue));
   }, [venue]);
 
+  const setWeekStart = useCallback((nextWeekStart: string) => {
+    setWeekStartState(nextWeekStart);
+  }, []);
+
   const replaceSchedule = useCallback((nextSchedule: GeneratedSchedule) => {
     setSchedule(nextSchedule);
   }, []);
@@ -229,12 +248,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const saveScheduleToHistory = useCallback((nextSchedule: GeneratedSchedule, label?: string) => {
     const item: ScheduleHistoryItem = {
       id: `history-${Date.now()}`,
-      label: label || `Horario ${new Date().toLocaleDateString("es-ES")}`,
+      label: label || `Semana del ${new Date(weekStart).toLocaleDateString("es-ES")}`,
+      weekStart,
       createdAt: new Date().toISOString(),
       schedule: nextSchedule
     };
     setHistory((current) => [item, ...current].slice(0, 12));
-  }, []);
+  }, [weekStart]);
 
   const loadScheduleFromHistory = useCallback((id: string) => {
     const item = history.find((entry) => entry.id === id);
@@ -246,6 +266,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setEmployeesState(demoState.employees);
     setSchedule(generateWeeklySchedule(demoState.employees, demoState.venue));
     setHistory([]);
+    setWeekStartState(getCurrentMonday());
     if (!isSupabaseConfigured) window.localStorage.removeItem(STORAGE_KEY);
     if (supabase && user) {
       void supabase.from("basa_workspaces").delete().eq("owner_id", user.id);
@@ -290,6 +311,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       employees,
       schedule,
       history,
+      weekStart,
       user,
       authLoading,
       workspaceLoading,
@@ -300,6 +322,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       signOut,
       setVenue,
       setEmployees,
+      setWeekStart,
       replaceSchedule,
       saveScheduleToHistory,
       loadScheduleFromHistory,
@@ -309,7 +332,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       clearSchedule,
       updateAssignment
     }),
-    [venue, employees, schedule, history, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory, saveWorkspace, resetWorkspace, generateSchedule, clearSchedule, updateAssignment]
+    [venue, employees, schedule, history, weekStart, user, authLoading, workspaceLoading, persistenceMode, signIn, signUp, signInWithGoogle, signOut, setVenue, setEmployees, setWeekStart, replaceSchedule, saveScheduleToHistory, loadScheduleFromHistory, saveWorkspace, resetWorkspace, generateSchedule, clearSchedule, updateAssignment]
   );
 
   return (
