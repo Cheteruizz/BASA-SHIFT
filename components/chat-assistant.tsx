@@ -252,6 +252,7 @@ function mergeEmployees(current: Employee[], incoming: AiEmployee[]) {
       unavailableDays: employee.unavailableDays,
       availabilityMode: {},
       availability: employee.availability,
+      preferredWorkDays: [],
       preferredRestDays: [],
       canOpen: employee.canOpen,
       canClose: employee.canClose,

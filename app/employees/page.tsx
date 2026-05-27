@@ -33,6 +33,7 @@ function createEmployee(copyFrom?: Employee): Employee {
     unavailableDays: [],
     availabilityMode: copyFrom?.availabilityMode ?? defaultAvailability,
     availability: copyFrom?.availability ?? {},
+    preferredWorkDays: copyFrom?.preferredWorkDays ?? [],
     preferredRestDays: [],
     canOpen: true,
     canClose: true,
@@ -167,6 +168,7 @@ export default function EmployeesPage() {
         </div>
 
         <AvailabilityEditor employee={draft} onChange={setDraft} />
+        <PreferredDaysEditor employee={draft} onChange={setDraft} />
 
         {editingId && (
           <button
@@ -259,6 +261,13 @@ export default function EmployeesPage() {
                         {DAYS.map((day) => (
                           <span key={day.key} className="rounded bg-snow px-2 py-1 text-xs font-bold text-deep">
                             {day.short}: {AVAILABILITY_LABELS[employee.availabilityMode?.[day.key] ?? "allDay"]}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {employee.preferredWorkDays.map((dayKey) => (
+                          <span key={dayKey} className="rounded-full bg-electric/10 px-2 py-1 text-xs font-black text-electric">
+                            Pref. {DAY_LABELS[dayKey]}
                           </span>
                         ))}
                       </div>
@@ -401,6 +410,40 @@ function AvailabilityEditor({ employee, onChange }: { employee: Employee; onChan
   );
 }
 
+function PreferredDaysEditor({ employee, onChange }: { employee: Employee; onChange: (employee: Employee) => void }) {
+  function toggleDay(day: DayKey) {
+    const preferredWorkDays = employee.preferredWorkDays.includes(day)
+      ? employee.preferredWorkDays.filter((item) => item !== day)
+      : [...employee.preferredWorkDays, day];
+    onChange(normalizeEmployee({ ...employee, preferredWorkDays }));
+  }
+
+  return (
+    <div className="mt-4 rounded-lg bg-snow p-3">
+      <div className="text-sm font-black text-ink">Dias preferidos de trabajo</div>
+      <p className="mt-1 text-xs text-deep/60">
+        Preferencia flexible: se intentan asignar primero, pero no bloquea otros dias si hace falta cubrir el bar.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {DAYS.map((day) => (
+          <button
+            key={day.key}
+            type="button"
+            onClick={() => toggleDay(day.key)}
+            className={`rounded-full px-3 py-1.5 text-xs font-black ${
+              employee.preferredWorkDays.includes(day.key)
+                ? "bg-electric text-white"
+                : "bg-white text-deep"
+            }`}
+          >
+            {day.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ToggleChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -424,6 +467,7 @@ function normalizeEmployee(employee: Employee): Employee {
     canOpen: employee.canOpen ?? true,
     canClose: employee.canClose ?? true,
     canWorkLongShift: employee.canWorkLongShift ?? true,
+    preferredWorkDays: employee.preferredWorkDays ?? [],
     availabilityMode: employee.availabilityMode ?? defaultAvailability,
     availability: employee.availability ?? {}
   };

@@ -212,6 +212,11 @@ function sortCandidates(
   hoursByEmployee: HoursMap
 ): Employee[] {
   return [...candidates].sort((a, b) => {
+    const preferredWorkDelta =
+      Number(b.preferredWorkDays?.includes(shift.day)) -
+      Number(a.preferredWorkDays?.includes(shift.day));
+    if (preferredWorkDelta !== 0) return preferredWorkDelta;
+
     const hoursDelta = hoursByEmployee[a.id] - hoursByEmployee[b.id];
     if (hoursDelta !== 0) return hoursDelta;
 

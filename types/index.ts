@@ -74,6 +74,7 @@ export interface Employee {
   unavailableDays: DayKey[];
   availabilityMode: Partial<Record<DayKey, AvailabilityMode>>;
   availability: Partial<Record<DayKey, Array<{ start: string; end: string }>>>;
+  preferredWorkDays: DayKey[];
   preferredRestDays: DayKey[];
   canOpen: boolean;
   canClose: boolean;

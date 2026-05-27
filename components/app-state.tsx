@@ -60,6 +60,7 @@ function normalizeEmployee(employee: Employee): Employee {
     availability: employee.availability ?? {},
     secondaryPositions: employee.secondaryPositions ?? [],
     unavailableDays: employee.unavailableDays ?? [],
+    preferredWorkDays: employee.preferredWorkDays ?? [],
     preferredRestDays: employee.preferredRestDays ?? []
   };
 }
