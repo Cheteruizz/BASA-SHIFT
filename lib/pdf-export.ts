@@ -2,9 +2,15 @@ import { DAYS, POSITION_LABELS } from "@/lib/constants";
 import { formatHours } from "@/lib/time";
 import type { Employee, GeneratedSchedule, ScheduleAssignment } from "@/types";
 
-const PAGE_WIDTH = 595;
-const PAGE_HEIGHT = 842;
-const MARGIN = 42;
+const PAGE_WIDTH = 842;
+const PAGE_HEIGHT = 595;
+const MARGIN = 28;
+const HEADER_HEIGHT = 82;
+const TABLE_TOP = PAGE_HEIGHT - 120;
+const ROW_HEIGHT = 58;
+const WORKER_COL = 128;
+const TOTAL_COL = 44;
+const DAY_COL = (PAGE_WIDTH - MARGIN * 2 - WORKER_COL - TOTAL_COL) / 7;
 
 type PdfColor = [number, number, number];
 type PdfImage = { width: number; height: number; data: string } | null;
@@ -15,10 +21,12 @@ const colors = {
   electric: [0, 0.42, 1] as PdfColor,
   cyan: [0, 0.831, 1] as PdfColor,
   snow: [0.957, 0.973, 1] as PdfColor,
+  pale: [0.91, 0.98, 1] as PdfColor,
   steel: [0.353, 0.427, 0.541] as PdfColor,
   white: [1, 1, 1] as PdfColor,
-  warning: [1, 0.93, 0.93] as PdfColor,
-  red: [0.75, 0.08, 0.08] as PdfColor
+  redBg: [1, 0.93, 0.93] as PdfColor,
+  red: [0.75, 0.08, 0.08] as PdfColor,
+  border: [0.78, 0.84, 0.9] as PdfColor
 };
 
 function cleanText(value: string) {
@@ -43,11 +51,11 @@ function rect(x: number, y: number, width: number, height: number, color: PdfCol
   return `${fill(color)} ${x} ${y} ${width} ${height} re f`;
 }
 
-function line(x1: number, y1: number, x2: number, y2: number, color: PdfColor, width = 1) {
-  return `${stroke(color)} ${width} w ${x1} ${y1} m ${x2} ${y2} l S`;
+function outline(x: number, y: number, width: number, height: number, color: PdfColor = colors.border, lineWidth = 0.6) {
+  return `${stroke(color)} ${lineWidth} w ${x} ${y} ${width} ${height} re S`;
 }
 
-function text(value: string, x: number, y: number, size = 10, color: PdfColor = colors.deep, font: "F1" | "F2" = "F1") {
+function text(value: string, x: number, y: number, size = 8, color: PdfColor = colors.deep, font: "F1" | "F2" = "F1") {
   return `BT /${font} ${size} Tf ${fill(color)} ${x} ${y} Td (${cleanText(value)}) Tj ET`;
 }
 
@@ -55,51 +63,8 @@ function image(x: number, y: number, width: number, height: number) {
   return `q ${width} 0 0 ${height} ${x} ${y} cm /Logo Do Q`;
 }
 
-function brandedHeader(title: string, subtitle: string, hasLogo: boolean) {
-  const logo = hasLogo
-    ? image(MARGIN, PAGE_HEIGHT - 106, 62, 62)
-    : [
-        rect(MARGIN, PAGE_HEIGHT - 93, 46, 46, colors.deep),
-        line(MARGIN, PAGE_HEIGHT - 47, MARGIN + 46, PAGE_HEIGHT - 93, colors.cyan, 1.4),
-        text("BD", MARGIN + 10, PAGE_HEIGHT - 77, 19, colors.cyan, "F2")
-      ].join("\n");
-
-  return [
-    rect(0, PAGE_HEIGHT - 126, PAGE_WIDTH, 126, colors.ink),
-    rect(0, PAGE_HEIGHT - 128, PAGE_WIDTH, 3, colors.cyan),
-    logo,
-    text("BASA", MARGIN + 76, PAGE_HEIGHT - 61, 22, colors.white, "F2"),
-    text("DIGITAL", MARGIN + 76, PAGE_HEIGHT - 78, 9, colors.cyan, "F2"),
-    text("Tecnologia que impulsa tu negocio", MARGIN + 76, PAGE_HEIGHT - 96, 9, colors.white),
-    text(title, MARGIN, PAGE_HEIGHT - 158, 22, colors.ink, "F2"),
-    text(subtitle, MARGIN, PAGE_HEIGHT - 176, 10, colors.steel)
-  ].join("\n");
-}
-
-function assignmentLine(assignment: ScheduleAssignment) {
-  return `${assignment.start}-${assignment.end} - ${POSITION_LABELS[assignment.position]} - ${assignment.label}`;
-}
-
-function buildEmployeeBlocks(schedule: GeneratedSchedule, employees: Employee[]) {
-  return employees
-    .filter((employee) => employee.status !== "inactive")
-    .map((employee) => {
-      const assignments = schedule.assignments.filter(
-        (assignment) => assignment.employeeId === employee.id && !assignment.uncovered
-      );
-      const total = assignments.reduce((sum, assignment) => sum + assignment.hours, 0);
-
-      return {
-        title: `${employee.name} - ${POSITION_LABELS[employee.primaryPosition]} - ${formatHours(total)}h`,
-        rows: DAYS.map((day) => {
-          const dayAssignments = assignments.filter((assignment) => assignment.day === day.key);
-          return {
-            day: day.label,
-            value: dayAssignments.length ? dayAssignments.map(assignmentLine).join(" / ") : "Libre"
-          };
-        })
-      };
-    });
+function truncate(value: string, max: number) {
+  return value.length > max ? `${value.slice(0, Math.max(0, max - 1))}.` : value;
 }
 
 async function loadLogo(): Promise<PdfImage> {
@@ -109,8 +74,8 @@ async function loadLogo(): Promise<PdfImage> {
     await img.decode();
 
     const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 300;
+    canvas.width = 260;
+    canvas.height = 260;
     const context = canvas.getContext("2d");
     if (!context) return null;
     context.fillStyle = "#020B18";
@@ -124,56 +89,128 @@ async function loadLogo(): Promise<PdfImage> {
   }
 }
 
-async function createBrandedPdf(schedule: GeneratedSchedule, employees: Employee[]) {
-  const logo = await loadLogo();
-  const pages: string[] = [];
-  let content = brandedHeader(
-    "Horario semanal BASA Shift",
-    `Generado automaticamente - ${employees.filter((employee) => employee.status !== "inactive").length} trabajadores`,
-    Boolean(logo)
-  );
-  let y = PAGE_HEIGHT - 210;
+function header(title: string, subtitle: string, hasLogo: boolean) {
+  const brand = hasLogo
+    ? image(MARGIN, PAGE_HEIGHT - 70, 42, 42)
+    : [
+        rect(MARGIN, PAGE_HEIGHT - 68, 38, 38, colors.deep),
+        text("BD", MARGIN + 9, PAGE_HEIGHT - 46, 16, colors.cyan, "F2")
+      ].join("\n");
 
-  function newPage() {
-    pages.push(content);
-    content = brandedHeader("Horario semanal BASA Shift", "Continuacion del cuadrante", Boolean(logo));
-    y = PAGE_HEIGHT - 210;
-  }
+  return [
+    rect(0, PAGE_HEIGHT - HEADER_HEIGHT, PAGE_WIDTH, HEADER_HEIGHT, colors.ink),
+    rect(0, PAGE_HEIGHT - HEADER_HEIGHT - 3, PAGE_WIDTH, 3, colors.cyan),
+    brand,
+    text("BASA", MARGIN + 54, PAGE_HEIGHT - 38, 18, colors.white, "F2"),
+    text("DIGITAL", MARGIN + 54, PAGE_HEIGHT - 53, 8, colors.cyan, "F2"),
+    text("Tecnologia que impulsa tu negocio", MARGIN + 54, PAGE_HEIGHT - 68, 8, colors.white),
+    text(title, MARGIN, PAGE_HEIGHT - 104, 16, colors.ink, "F2"),
+    text(subtitle, MARGIN + 270, PAGE_HEIGHT - 104, 8, colors.steel)
+  ].join("\n");
+}
 
-  for (const block of buildEmployeeBlocks(schedule, employees)) {
-    if (y < 205) newPage();
-    content += `\n${rect(MARGIN, y - 8, PAGE_WIDTH - MARGIN * 2, 22, colors.deep)}`;
-    content += `\n${text(block.title, MARGIN + 10, y - 1, 11, colors.white, "F2")}`;
-    y -= 28;
+function assignmentText(assignment: ScheduleAssignment) {
+  return `${assignment.start}-${assignment.end} ${POSITION_LABELS[assignment.position]} ${assignment.label}`;
+}
 
-    for (const row of block.rows) {
-      if (y < 75) newPage();
-      content += `\n${rect(MARGIN, y - 5, 74, 18, colors.snow)}`;
-      content += `\n${text(row.day, MARGIN + 8, y, 9, colors.electric, "F2")}`;
-      content += `\n${text(row.value, MARGIN + 90, y, 8.4, colors.deep)}`;
-      y -= 19;
-    }
-    y -= 10;
-  }
+function getRows(schedule: GeneratedSchedule, employees: Employee[]) {
+  const activeRows = employees
+    .filter((employee) => employee.status !== "inactive")
+    .map((employee) => {
+      const assignments = schedule.assignments.filter(
+        (assignment) => assignment.employeeId === employee.id && !assignment.uncovered
+      );
+      return {
+        id: employee.id,
+        name: employee.name,
+        role: POSITION_LABELS[employee.primaryPosition],
+        total: assignments.reduce((sum, assignment) => sum + assignment.hours, 0),
+        assignments
+      };
+    });
 
   const uncovered = schedule.assignments.filter((assignment) => assignment.uncovered);
   if (uncovered.length) {
-    if (y < 135) newPage();
-    content += `\n${rect(MARGIN, y - 8, PAGE_WIDTH - MARGIN * 2, 22, colors.warning)}`;
-    content += `\n${text("Turnos sin cubrir", MARGIN + 10, y - 1, 11, colors.red, "F2")}`;
-    y -= 28;
-
-    for (const assignment of uncovered) {
-      if (y < 75) newPage();
-      const day = DAYS.find((item) => item.key === assignment.day)?.label ?? assignment.day;
-      content += `\n${text(`${day}: ${assignmentLine(assignment)}`, MARGIN + 10, y, 9, colors.red)}`;
-      y -= 17;
-    }
+    activeRows.push({
+      id: "__uncovered__",
+      name: "Sin cubrir",
+      role: "Aviso",
+      total: 0,
+      assignments: uncovered
+    });
   }
 
-  content += `\n${line(MARGIN, 42, PAGE_WIDTH - MARGIN, 42, colors.cyan, 0.8)}`;
-  content += `\n${text("BASA Digital - BASA Shift", MARGIN, 26, 8, colors.steel)}`;
-  pages.push(content);
+  return activeRows;
+}
+
+function drawTableHeader(y: number) {
+  let content = rect(MARGIN, y, PAGE_WIDTH - MARGIN * 2, 24, colors.deep);
+  content += `\n${text("Trabajador", MARGIN + 8, y + 8, 8, colors.white, "F2")}`;
+  DAYS.forEach((day, index) => {
+    const x = MARGIN + WORKER_COL + index * DAY_COL;
+    content += `\n${text(day.short, x + 5, y + 8, 8, colors.white, "F2")}`;
+  });
+  content += `\n${text("Total", PAGE_WIDTH - MARGIN - TOTAL_COL + 6, y + 8, 8, colors.white, "F2")}`;
+  return content;
+}
+
+function drawRow(row: ReturnType<typeof getRows>[number], y: number) {
+  const rowBg = row.id === "__uncovered__" ? colors.redBg : colors.white;
+  let content = rect(MARGIN, y, PAGE_WIDTH - MARGIN * 2, ROW_HEIGHT, rowBg);
+  content += `\n${outline(MARGIN, y, PAGE_WIDTH - MARGIN * 2, ROW_HEIGHT)}`;
+  content += `\n${text(truncate(row.name, 22), MARGIN + 7, y + ROW_HEIGHT - 16, 8.5, colors.ink, "F2")}`;
+  content += `\n${text(truncate(row.role, 22), MARGIN + 7, y + ROW_HEIGHT - 29, 7, colors.steel)}`;
+
+  DAYS.forEach((day, index) => {
+    const x = MARGIN + WORKER_COL + index * DAY_COL;
+    content += `\n${outline(x, y, DAY_COL, ROW_HEIGHT)}`;
+    const assignments = row.assignments.filter((assignment) => assignment.day === day.key);
+    if (!assignments.length) {
+      content += `\n${text("Libre", x + 5, y + ROW_HEIGHT - 18, 7, colors.steel)}`;
+      return;
+    }
+
+    assignments.slice(0, 3).forEach((assignment, assignmentIndex) => {
+      const chipY = y + ROW_HEIGHT - 17 - assignmentIndex * 15;
+      const bg = assignment.uncovered ? colors.redBg : colors.pale;
+      const fg = assignment.uncovered ? colors.red : colors.deep;
+      content += `\n${rect(x + 3, chipY - 4, DAY_COL - 6, 13, bg)}`;
+      content += `\n${outline(x + 3, chipY - 4, DAY_COL - 6, 13, assignment.uncovered ? colors.red : colors.cyan, 0.35)}`;
+      content += `\n${text(truncate(assignmentText(assignment), 25), x + 5, chipY, 5.7, fg, "F2")}`;
+    });
+
+    if (assignments.length > 3) {
+      content += `\n${text(`+${assignments.length - 3} mas`, x + 5, y + 6, 5.7, colors.electric, "F2")}`;
+    }
+  });
+
+  const totalX = PAGE_WIDTH - MARGIN - TOTAL_COL;
+  content += `\n${outline(totalX, y, TOTAL_COL, ROW_HEIGHT)}`;
+  content += `\n${text(row.id === "__uncovered__" ? "-" : `${formatHours(row.total)}h`, totalX + 8, y + ROW_HEIGHT - 25, 8, colors.ink, "F2")}`;
+  return content;
+}
+
+async function createBrandedPdf(schedule: GeneratedSchedule, employees: Employee[]) {
+  const logo = await loadLogo();
+  const rows = getRows(schedule, employees);
+  const rowsPerPage = Math.floor((TABLE_TOP - 45) / ROW_HEIGHT);
+  const pages: string[] = [];
+
+  for (let pageIndex = 0; pageIndex < Math.max(1, Math.ceil(rows.length / rowsPerPage)); pageIndex += 1) {
+    const pageRows = rows.slice(pageIndex * rowsPerPage, (pageIndex + 1) * rowsPerPage);
+    let content = header(
+      "Cuadrante semanal BASA Shift",
+      `Pagina ${pageIndex + 1} - ${employees.filter((employee) => employee.status !== "inactive").length} trabajadores`,
+      Boolean(logo)
+    );
+    content += `\n${drawTableHeader(TABLE_TOP)}`;
+    pageRows.forEach((row, index) => {
+      content += `\n${drawRow(row, TABLE_TOP - 24 - (index + 1) * ROW_HEIGHT)}`;
+    });
+    content += `\n${text("BASA Digital - BASA Shift", MARGIN, 22, 7, colors.steel)}`;
+    content += `\n${text("Los turnos en rojo quedan sin cubrir.", PAGE_WIDTH - MARGIN - 170, 22, 7, colors.steel)}`;
+    pages.push(content);
+  }
 
   return createPdfDocument(pages, logo);
 }
@@ -220,7 +257,7 @@ export async function downloadSchedulePdf(schedule: GeneratedSchedule, employees
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "basa-shift-horario.pdf";
+  link.download = "basa-shift-cuadrante.pdf";
   document.body.appendChild(link);
   link.click();
   link.remove();
